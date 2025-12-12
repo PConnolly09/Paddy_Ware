@@ -14,7 +14,7 @@ public class PlayerGridMovement : MonoBehaviour
 
     void Start()
     {
-        gridManager = FindObjectOfType<GridManager>();
+        gridManager = FindAnyObjectByType<GridManager>();
         gridPosition = Vector2Int.zero;
         transform.position = GridToWorld(gridPosition);
         targetWorldPosition = transform.position;

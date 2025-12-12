@@ -1,4 +1,6 @@
 using UnityEngine;
+using System.Collections.Generic;
+
 
 public class GridManager : MonoBehaviour
 {
@@ -52,7 +54,6 @@ public class GridManager : MonoBehaviour
                 // Spawn wall or floor based on data
                 GameObject prefab = wallPositions.Contains(gridPos) ? wallTilePrefab : floorTilePrefab;
                 Instantiate(prefab, cellPosition, Quaternion.identity, transform);
-                gridCells[x, y] = cell;
             }
         }
 
