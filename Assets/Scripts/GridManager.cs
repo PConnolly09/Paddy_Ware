@@ -7,14 +7,34 @@ public class GridManager : MonoBehaviour
     [Header ("Grid Settings")]
     public float gridWidth = 8f;
     public float gridHeight = 8f;
-    public GameObject cellPrefab;
+    public GameObject floorTilePrefab;
+    public GameObject wallTilePrefab;
     private GameObject[,] gridCells;
     private float cellSize = 1f;
+
+
+    // Define which tiles are walls
+    private HashSet<Vector2Int> wallPositions = new HashSet<Vector2Int>();
+
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
+        SetupWalls();
         GenerateGrid();
+    }
+
+    void SetupWalls()
+    {
+        // Manually define some walls for testing
+        // Make a simple corridor or room shape
+        wallPositions.Add(new Vector2Int(3, 3));
+        wallPositions.Add(new Vector2Int(3, 4));
+        wallPositions.Add(new Vector2Int(3, 5));
+        wallPositions.Add(new Vector2Int(5, 3));
+        wallPositions.Add(new Vector2Int(5, 4));
+        wallPositions.Add(new Vector2Int(5, 5));
+        // Add more walls to create a simple test layout
     }
 
     void GenerateGrid()
@@ -26,11 +46,21 @@ public class GridManager : MonoBehaviour
         {
             for (int y = 0; y < cellsY; y++)
             {
-                Vector3 cellPosition = new Vector3(x * cellSize, y * cellSize,0);
-                GameObject cell = Instantiate(cellPrefab, cellPosition, Quaternion.identity);
-                cell.transform.parent = this.transform;
+                Vector3 cellPosition = new Vector3(x * cellSize, y * cellSize, 0);
+                Vector2Int gridPos = new Vector2Int(x, y);
+
+                // Spawn wall or floor based on data
+                GameObject prefab = wallPositions.Contains(gridPos) ? wallTilePrefab : floorTilePrefab;
+                Instantiate(prefab, cellPosition, Quaternion.identity, transform);
                 gridCells[x, y] = cell;
             }
         }
+
+    }
+
+            // PUBLIC METHOD for other scripts to check
+    public bool IsWalkable(Vector2Int position)
+    {
+        return !wallPositions.Contains(position);
     }
 }
