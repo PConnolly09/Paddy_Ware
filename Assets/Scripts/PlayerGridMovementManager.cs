@@ -97,6 +97,12 @@ public class PlayerGridMovement : MonoBehaviour
             gridPosition = newGridPos;
             targetWorldPosition = GridToWorld(gridPosition);
             isMoving = true;
+
+            // Increment turn counter - NEW
+            if (TurnCounter.Instance != null)
+            {
+                TurnCounter.Instance.IncrementTurn();
+            }
         }
         else
         {

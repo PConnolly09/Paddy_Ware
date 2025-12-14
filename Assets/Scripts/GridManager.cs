@@ -30,13 +30,27 @@ public class GridManager : MonoBehaviour
     {
         // Manually define some walls for testing
         // Make a simple corridor or room shape
-        wallPositions.Add(new Vector2Int(3, 3));
-        wallPositions.Add(new Vector2Int(3, 4));
-        wallPositions.Add(new Vector2Int(3, 5));
-        wallPositions.Add(new Vector2Int(5, 3));
-        wallPositions.Add(new Vector2Int(5, 4));
-        wallPositions.Add(new Vector2Int(5, 5));
-        // Add more walls to create a simple test layout
+        for (int i = 0; i < gridWidth; i++)
+
+            for (int j = 0; j < gridHeight; j++)
+            {
+                // Example: create walls around the border
+                //if (i == 0 || j == 0 || i == gridWidth - 1 || j == gridHeight - 1)
+                //{
+                //    wallPositions.Add(new Vector2Int(i, j));
+                //}
+                //else
+                //{                     // Randomly place some internal walls for testing
+
+                if (i != 0 && j != 0)
+                {
+                    if (Random.value < 0.2f)
+                    {
+                        wallPositions.Add(new Vector2Int(i, j));
+                    }
+                }
+               // }
+            }     
     }
 
     void GenerateGrid()
