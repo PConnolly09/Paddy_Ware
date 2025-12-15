@@ -1,25 +1,27 @@
+// PlayerGridMovement.cs - MAJOR REWRITE
 using UnityEngine;
 
 public class PlayerGridMovement : MonoBehaviour
 {
     public float tileSize = 1f;
     public float moveSpeed = 5f;
-    public GameObject moveHighlightPrefab; // NEW - Assign in inspector
+    public GameObject moveHighlightPrefab;
 
     private GridManager gridManager;
     private Vector2Int gridPosition = Vector2Int.zero;
+    private Vector2Int plannedPosition = Vector2Int.zero; // NEW - where we plan to move
     private Vector3 targetWorldPosition;
-    private bool isMoving = false;
-    private GameObject currentHighlight; // NEW
+    private bool isExecuting = false; // NEW - are we animating?
+    private GameObject currentHighlight;
 
     void Start()
     {
         gridManager = FindAnyObjectByType<GridManager>();
         gridPosition = Vector2Int.zero;
+        plannedPosition = gridPosition; // Start with no planned move
         transform.position = GridToWorld(gridPosition);
         targetWorldPosition = transform.position;
 
-        // Create highlight object - NEW
         if (moveHighlightPrefab != null)
         {
             currentHighlight = Instantiate(moveHighlightPrefab);
@@ -29,92 +31,90 @@ public class PlayerGridMovement : MonoBehaviour
 
     void Update()
     {
-        UpdateHighlight(); // NEW
-        HandleInput();
-        MoveToTarget();
-    }
-
-    void UpdateHighlight() // NEW METHOD
-    {
-        if (isMoving || currentHighlight == null)
+        if (GameStateManager.Instance != null && GameStateManager.Instance.IsPlanning())
         {
-            currentHighlight.SetActive(false);
-            return;
+            HandlePlanningInput();
+            UpdateHighlight();
         }
 
-        // Check which direction is being held
-        Vector2Int previewDirection = Vector2Int.zero;
-
-        if (Input.GetKey(KeyCode.W)) previewDirection = Vector2Int.up;
-        else if (Input.GetKey(KeyCode.S)) previewDirection = Vector2Int.down;
-        else if (Input.GetKey(KeyCode.A)) previewDirection = Vector2Int.left;
-        else if (Input.GetKey(KeyCode.D)) previewDirection = Vector2Int.right;
-
-        if (previewDirection != Vector2Int.zero)
+        if (isExecuting)
         {
-            Vector2Int previewPos = gridPosition + previewDirection;
-            bool isValid = IsValidPosition(previewPos);
-
-            currentHighlight.SetActive(true);
-            currentHighlight.transform.position = GridToWorld(previewPos);
-
-            // Change color based on validity
-            SpriteRenderer sr = currentHighlight.GetComponent<SpriteRenderer>();
-            if (sr != null)
-            {
-                sr.color = isValid ? new Color(0, 1, 0, 0.5f) : new Color(1, 0, 0, 0.5f); // Green or Red
-            }
-        }
-        else
-        {
-            currentHighlight.SetActive(false);
+            ExecuteMovement();
         }
     }
 
-    void HandleInput()
+    void HandlePlanningInput()
     {
-        if (isMoving) return;
-
+        // During planning, arrow keys select where to move (don't move yet)
         Vector2Int inputDirection = Vector2Int.zero;
 
-        if (Input.GetKeyDown(KeyCode.W)) inputDirection = Vector2Int.up;
-        else if (Input.GetKeyDown(KeyCode.S)) inputDirection = Vector2Int.down;
-        else if (Input.GetKeyDown(KeyCode.A)) inputDirection = Vector2Int.left;
-        else if (Input.GetKeyDown(KeyCode.D)) inputDirection = Vector2Int.right;
+        if (Input.GetKey(KeyCode.W)) inputDirection = Vector2Int.up;
+        else if (Input.GetKey(KeyCode.S)) inputDirection = Vector2Int.down;
+        else if (Input.GetKey(KeyCode.A)) inputDirection = Vector2Int.left;
+        else if (Input.GetKey(KeyCode.D)) inputDirection = Vector2Int.right;
 
         if (inputDirection != Vector2Int.zero)
         {
-            TryMove(inputDirection);
+            plannedPosition = gridPosition + inputDirection;
+        }
+        else
+        {
+            // No input = plan to stay in place
+            plannedPosition = gridPosition;
         }
     }
 
-    void TryMove(Vector2Int direction)
+    void UpdateHighlight()
     {
-        Vector2Int newGridPos = gridPosition + direction;
+        if (currentHighlight == null) return;
 
-        if (IsValidPosition(newGridPos))
+        // If planned position is different from current, show highlight
+        if (plannedPosition != gridPosition)
         {
-            gridPosition = newGridPos;
-            targetWorldPosition = GridToWorld(gridPosition);
-            isMoving = true;
+            bool isValid = IsValidPosition(plannedPosition);
 
-            // Increment turn counter - NEW
-            if (TurnCounter.Instance != null)
+            currentHighlight.SetActive(true);
+            currentHighlight.transform.position = GridToWorld(plannedPosition);
+
+            SpriteRenderer sr = currentHighlight.GetComponent<SpriteRenderer>();
+            if (sr != null)
             {
-                TurnCounter.Instance.IncrementTurn();
+                sr.color = isValid ? new Color(0, 1, 0, 0.5f) : new Color(1, 0, 0, 0.5f);
             }
         }
         else
         {
-            // Optional: Visual/audio feedback for invalid move
-            Debug.Log($"Can't move to {newGridPos}");
+            currentHighlight.SetActive(false);
         }
     }
 
-    void MoveToTarget()
+    // Called by GameStateManager when SPACE is pressed
+    public void ExecutePlannedMove()
     {
-        if (!isMoving) return;
+        if (IsValidPosition(plannedPosition))
+        {
+            // Valid move - execute it
+            gridPosition = plannedPosition;
+            targetWorldPosition = GridToWorld(gridPosition);
+            isExecuting = true;
 
+            // Hide highlight during execution
+            if (currentHighlight != null)
+            {
+                currentHighlight.SetActive(false);
+            }
+        }
+        else
+        {
+            // Invalid move - just stay in place
+            Debug.Log("Invalid move, staying in place");
+            OnMoveComplete();
+        }
+    }
+
+    void ExecuteMovement()
+    {
+        // Smoothly move to target position
         transform.position = Vector3.MoveTowards(
             transform.position,
             targetWorldPosition,
@@ -124,17 +124,26 @@ public class PlayerGridMovement : MonoBehaviour
         if (Vector3.Distance(transform.position, targetWorldPosition) < 0.01f)
         {
             transform.position = targetWorldPosition;
-            isMoving = false;
+            OnMoveComplete();
+        }
+    }
+
+    void OnMoveComplete()
+    {
+        isExecuting = false;
+
+        // Tell game manager we're done
+        if (GameStateManager.Instance != null)
+        {
+            GameStateManager.Instance.OnTurnExecutionComplete();
         }
     }
 
     bool IsValidPosition(Vector2Int pos)
     {
-        // Check bounds
         if (pos.x < 0 || pos.x >= 8 || pos.y < 0 || pos.y >= 8)
             return false;
 
-        // Check walkability (walls) - NEW
         if (gridManager != null && !gridManager.IsWalkable(pos))
             return false;
 
@@ -144,5 +153,16 @@ public class PlayerGridMovement : MonoBehaviour
     Vector3 GridToWorld(Vector2Int gridPos)
     {
         return new Vector3(gridPos.x * tileSize, gridPos.y * tileSize, 0);
+    }
+
+    // PUBLIC - for other scripts to query
+    public Vector2Int GetGridPosition()
+    {
+        return gridPosition;
+    }
+
+    public Vector2Int GetPlannedPosition()
+    {
+        return plannedPosition;
     }
 }
