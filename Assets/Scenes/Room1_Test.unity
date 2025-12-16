@@ -174,11 +174,15 @@ PrefabInstance:
     - target: {fileID: 4403746657845507256, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
       propertyPath: visionMaterial
       value: 
-      objectReference: {fileID: 2100000, guid: e73a58f6e2794ae7b1b7e50b7fb811b0, type: 2}
-    m_RemovedComponents: []
+      objectReference: {fileID: 0}
+    m_RemovedComponents:
+    - {fileID: 4403746657845507256, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1710265828834359456, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 520376903}
   m_SourcePrefab: {fileID: 100100000, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
 --- !u!1 &95272123
 GameObject:
@@ -225,6 +229,70 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &520376897 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1710265828834359456, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+  m_PrefabInstance: {fileID: 29370184}
+  m_PrefabAsset: {fileID: 0}
+--- !u!60 &520376903
+PolygonCollider2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 520376897}
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Density: 1
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ForceSendLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ForceReceiveLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ContactCaptureLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_CallbackLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_IsTrigger: 0
+  m_UsedByEffector: 0
+  m_CompositeOperation: 0
+  m_CompositeOrder: 0
+  m_Offset: {x: 0, y: 0}
+  m_SpriteTilingProperty:
+    border: {x: 0, y: 0, z: 0, w: 0}
+    pivot: {x: 0.5, y: 0.5}
+    oldSize: {x: 0.47, y: 0.69}
+    newSize: {x: 0.47, y: 0.69}
+    adaptiveTilingThreshold: 0.5
+    drawMode: 0
+    adaptiveTiling: 0
+  m_AutoTiling: 0
+  m_Points:
+    m_Paths:
+    - - {x: 0.195, y: 0.345}
+      - {x: -0.125, y: 0.345}
+      - {x: -0.16499999, y: 0.295}
+      - {x: -0.235, y: 0.155}
+      - {x: -0.235, y: -0.145}
+      - {x: -0.225, y: -0.205}
+      - {x: -0.235, y: -0.24499999}
+      - {x: -0.235, y: -0.345}
+      - {x: 0.145, y: -0.345}
+      - {x: 0.195, y: -0.235}
+      - {x: 0.235, y: -0.145}
+      - {x: 0.235, y: 0.105}
+  m_UseDelaunayMesh: 0
 --- !u!1 &544232867
 GameObject:
   m_ObjectHideFlags: 0
