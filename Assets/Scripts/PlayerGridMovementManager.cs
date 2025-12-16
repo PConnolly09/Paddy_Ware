@@ -165,4 +165,9 @@ public class PlayerGridMovement : MonoBehaviour
     {
         return plannedPosition;
     }
+
+    public bool IsExecuting()
+    {
+        return isExecuting;
+    }
 }
