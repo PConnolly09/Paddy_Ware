@@ -178,6 +178,36 @@ public class GameStateManager : MonoBehaviour
             _ => ""
         };
 
+        // Show interaction hint - NEW
+        if (currentPhase == GamePhase.Planning)
+        {
+            PlayerGridMovement player = FindAnyObjectByType<PlayerGridMovement>();
+            if (player != null)
+            {
+                // Check for nearby interactables
+                Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
+
+                foreach (Interactable obj in interactables)
+                {
+                    if (obj.IsConsumed()) continue;
+
+                    float dist = Vector2Int.Distance(player.GetGridPosition(), obj.GetGridPosition());
+
+                    if (dist <= 1.5f)
+                    {
+                        GUIStyle hintStyle = new GUIStyle();
+                        hintStyle.fontSize = 18;
+                        hintStyle.normal.textColor = Color.cyan;
+
+                        GUI.Label(new Rect(10, 80, 400, 30),
+                            $"[E] {obj.GetInteractionPreview()}", hintStyle);
+                        break;
+                    }
+                }
+            }
+        }
+
+
         GUI.Label(new Rect(10, 50, 600, 30), phaseText, style);
 
         // BIG GAME OVER SCREEN (new)

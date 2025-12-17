@@ -13,6 +13,7 @@ public class PlayerGridMovement : MonoBehaviour
     private Vector3 targetWorldPosition;
     private bool isExecuting = false; // NEW - are we animating?
     private GameObject currentHighlight;
+    private Interactable targetInteractable = null; // What we're planning to interact with
 
     void Start()
     {
@@ -56,11 +57,58 @@ public class PlayerGridMovement : MonoBehaviour
         if (inputDirection != Vector2Int.zero)
         {
             plannedPosition = gridPosition + inputDirection;
+            targetInteractable = null; // Clear interaction if moving
         }
         else
         {
             // No input = plan to stay in place
             plannedPosition = gridPosition;
+        }
+
+        // E to interact with adjacent object - NEW
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            FindAndPlanInteraction();
+        }
+
+        // Cancel interaction - NEW
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            targetInteractable = null;
+            Debug.Log("Interaction cancelled");
+        }
+    }
+
+    // NEW METHOD
+    void FindAndPlanInteraction()
+    {
+        // Find interactable objects adjacent to current position
+        Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
+
+        Interactable closest = null;
+        float closestDist = float.MaxValue;
+
+        foreach (Interactable obj in interactables)
+        {
+            if (obj.IsConsumed()) continue;
+
+            float dist = Vector2Int.Distance(gridPosition, obj.GetGridPosition());
+
+            if (dist <= 1.5f && dist < closestDist) // Adjacent (distance ~1)
+            {
+                closest = obj;
+                closestDist = dist;
+            }
+        }
+
+        if (closest != null)
+        {
+            targetInteractable = closest;
+            Debug.Log($"Planning to interact with: {closest.GetInteractionPreview()}");
+        }
+        else
+        {
+            Debug.Log("No interactable objects nearby");
         }
     }
 
@@ -91,6 +139,19 @@ public class PlayerGridMovement : MonoBehaviour
     // Called by GameStateManager when SPACE is pressed
     public void ExecutePlannedMove()
     {
+
+        // If we have a target interaction, do that instead of moving
+        if (targetInteractable != null && !targetInteractable.IsConsumed())
+        {
+            Debug.Log("Executing interaction");
+            targetInteractable.Interact(this);
+            targetInteractable = null;
+
+            // Don't move, just complete turn
+            OnMoveComplete();
+            return;
+        }
+
         if (IsValidPosition(plannedPosition))
         {
             // Valid move - execute it
