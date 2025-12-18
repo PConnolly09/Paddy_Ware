@@ -11,8 +11,9 @@ GameObject:
   - component: {fileID: 1481713569721182260}
   - component: {fileID: 2217888976049008039}
   - component: {fileID: 5545770818347270735}
+  - component: {fileID: 2797118211948500521}
   m_Layer: 0
-  m_Name: Barrel
+  m_Name: ExplosiveBarrel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -79,7 +80,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 0
+  m_SortingOrder: 2
   m_Sprite: {fileID: 1380203805528671675, guid: 617ff9939205f0840b3cbf7f46c1ed53, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -149,3 +150,20 @@ PolygonCollider2D:
       - {x: 0.26, y: -0.12}
       - {x: 0.26, y: 0.17}
   m_UseDelaunayMesh: 0
+--- !u!114 &2797118211948500521
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4004244036235914996}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 197ce2a7388ff41448431ac15131abff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ExplosiveBarrel
+  interactableID: barrel_main
+  gridPosition: {x: 4, y: 4}
+  isConsumed: 0
+  tileSize: 1
+  explosionRadius: 1

@@ -6,7 +6,8 @@ public enum GamePhase
     Planning,    // Player is thinking, can preview
     Executing,   // Turn is executing (animations play)
     Complete,     // Turn done, ready for next
-    GameOver     // NEW: Game over state
+    GameOver,    // NEW: Game over state
+    Victory
 }
 
 public class GameStateManager : MonoBehaviour
@@ -34,6 +35,16 @@ public class GameStateManager : MonoBehaviour
             }
             return; // Don't process any other input
         }
+
+        if (currentPhase == GamePhase.Victory)
+        {
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                RestartLevel();
+            }
+            // TODO Day 6: if (Input.GetKeyDown(KeyCode.N)) { StartNextRun(); }
+            return;
+        }
         // Only allow input if not game over - UPDATED
         if (currentPhase == GamePhase.Planning && Input.GetKeyDown(KeyCode.Space))
         {
@@ -58,6 +69,12 @@ public class GameStateManager : MonoBehaviour
         UnityEngine.SceneManagement.SceneManager.LoadScene(
             UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
         );
+    }
+
+    public void SetWin()
+    {
+        currentPhase = GamePhase.Victory;
+        Debug.Log("VICTORY! - Press R to restart or N for next run");
     }
     void CommitTurn()
     {
@@ -175,8 +192,32 @@ public class GameStateManager : MonoBehaviour
             GamePhase.Executing => "EXECUTING...",
             GamePhase.Complete => "Turn complete",
             GamePhase.GameOver => "*** GAME OVER *** - Press R to restart",
+            GamePhase.Victory => "*** VICTORY *** - Press R to restart", // NEW
             _ => ""
         };
+
+        GUI.Label(new Rect(10, 50, 600, 30), phaseText, style);
+
+        // Victory screen - NEW
+        if (currentPhase == GamePhase.Victory)
+        {
+            GUIStyle bigStyle = new GUIStyle();
+            bigStyle.fontSize = 48;
+            bigStyle.normal.textColor = Color.green;
+            bigStyle.alignment = TextAnchor.MiddleCenter;
+
+            GUI.Label(new Rect(0, Screen.height / 2 - 50, Screen.width, 100), "VICTORY!", bigStyle);
+
+            GUIStyle smallStyle = new GUIStyle();
+            smallStyle.fontSize = 24;
+            smallStyle.normal.textColor = Color.white;
+            smallStyle.alignment = TextAnchor.MiddleCenter;
+
+            // Show turn count
+            int turns = TurnCounter.Instance != null ? TurnCounter.Instance.GetCurrentTurn() : 0;
+            GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 50),
+                $"Completed in {turns} turns\nPress R to Restart", smallStyle);
+        }
 
         // Show interaction hint - NEW
         if (currentPhase == GamePhase.Planning)
@@ -208,7 +249,7 @@ public class GameStateManager : MonoBehaviour
         }
 
 
-        GUI.Label(new Rect(10, 50, 600, 30), phaseText, style);
+
 
         // BIG GAME OVER SCREEN (new)
         if (currentPhase == GamePhase.GameOver)
