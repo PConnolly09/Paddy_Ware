@@ -1,4 +1,5 @@
 // GameStateManager.cs - NEW SCRIPT
+using System.Collections.Generic;
 using UnityEngine;
 
 public enum GamePhase
@@ -16,6 +17,9 @@ public class GameStateManager : MonoBehaviour
 
     public GamePhase currentPhase = GamePhase.Planning;
 
+    // Add field
+    private List<GhostPlayer> activeGhosts = new List<GhostPlayer>();
+    public GameObject ghostPrefab; // Assign in inspector
     void Awake()
     {
         if (Instance == null)
@@ -23,6 +27,31 @@ public class GameStateManager : MonoBehaviour
             Instance = this;
         }
     }
+
+    void Start()
+    {
+        Debug.Log("=== GameStateManager Start ===");
+
+        if (RunRecorder.Instance == null)
+        {
+            Debug.LogError("RunRecorder.Instance is NULL!");
+        }
+        else
+        {
+            Debug.Log($"RunRecorder found, run count: {RunRecorder.Instance.GetRunCount()}");
+        }
+        // Spawn ghosts for previous runs
+        SpawnGhosts();
+
+        // Start first run
+        if (RunRecorder.Instance != null)
+        {
+            RunRecorder.Instance.StartNewRun();
+        }
+        // Disable consumed resources
+        DisableConsumedResources();
+    }
+
 
     void Update()
     {
@@ -38,11 +67,14 @@ public class GameStateManager : MonoBehaviour
 
         if (currentPhase == GamePhase.Victory)
         {
-            if (Input.GetKeyDown(KeyCode.R))
+            if (Input.GetKeyDown(KeyCode.N)) // NEW - next run
             {
-                RestartLevel();
+                StartNextRun();
             }
-            // TODO Day 6: if (Input.GetKeyDown(KeyCode.N)) { StartNextRun(); }
+            else if (Input.GetKeyDown(KeyCode.R))
+            {
+                RestartFromBeginning();
+            }
             return;
         }
         // Only allow input if not game over - UPDATED
@@ -64,6 +96,116 @@ public class GameStateManager : MonoBehaviour
         // Don't allow planning if game over
     }
 
+    void SpawnGhosts()
+    {
+        Debug.Log("=== SpawnGhosts called ===");
+
+        if (RunRecorder.Instance == null)
+        {
+            Debug.LogError("RunRecorder.Instance is NULL in SpawnGhosts");
+            return;
+        }
+
+        int runCount = RunRecorder.Instance.GetRunCount();
+        Debug.Log($"Run count: {runCount}");
+
+        if (runCount == 0)
+        {
+            Debug.Log("First run, no ghosts to spawn");
+            return;
+        }
+
+        Debug.Log($"Spawning {runCount} ghosts from previous runs");
+
+        for (int i = 1; i <= runCount; i++)
+        {
+            RunData run = RunRecorder.Instance.GetRun(i);
+
+            if (run == null)
+            {
+                Debug.LogError($"Run {i} is NULL!");
+                continue;
+            }
+
+            Debug.Log($"Run {i}: completed={run.completed}, actions={run.actions.Count}");
+
+            if (run.completed)
+            {
+                SpawnGhost(run);
+            }
+            else
+            {
+                Debug.LogWarning($"Run {i} not completed, skipping ghost spawn");
+            }
+        }
+    }
+
+    void SpawnGhost(RunData runData)
+    {
+        Debug.Log($"=== SpawnGhost for Run #{runData.runNumber} ===");
+
+        if (ghostPrefab == null)
+        {
+            Debug.LogError("ghostPrefab is NULL! Assign it in GameStateManager inspector!");
+            return;
+        }
+
+        Debug.Log("Instantiating ghost prefab...");
+        GameObject ghostObj = Instantiate(ghostPrefab);
+
+        Debug.Log("Getting GhostPlayer component...");
+        GhostPlayer ghost = ghostObj.GetComponent<GhostPlayer>();
+
+        if (ghost == null)
+        {
+            Debug.LogError("Ghost prefab doesn't have GhostPlayer component!");
+            Destroy(ghostObj);
+            return;
+        }
+
+        Debug.Log("Setting ghost runData...");
+        ghost.runData = runData;
+        activeGhosts.Add(ghost);
+
+        Debug.Log($"Successfully spawned ghost for Run #{runData.runNumber}");
+    }
+
+    void DisableConsumedResources()
+    {
+        if (RunRecorder.Instance == null) return;
+
+        List<string> consumedIDs = RunRecorder.Instance.GetAllConsumedResources();
+
+        Debug.Log($"Disabling {consumedIDs.Count} consumed resources");
+
+        Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
+
+        foreach (Interactable obj in interactables)
+        {
+            if (consumedIDs.Contains(obj.interactableID))
+            {
+                Debug.Log($"Resource {obj.interactableID} already consumed, disabling");
+                obj.Consume(); // Hide it
+            }
+        }
+    }
+
+    void RestartFromBeginning()
+    {
+        Debug.Log("Restarting from beginning...");
+
+        // Clear all runs
+        if (RunRecorder.Instance != null)
+        {
+            Destroy(RunRecorder.Instance.gameObject);
+        }
+
+        // Reload scene
+        UnityEngine.SceneManagement.SceneManager.LoadScene(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+        );
+    }
+
     void RestartLevel()
     {
         UnityEngine.SceneManagement.SceneManager.LoadScene(
@@ -74,10 +216,18 @@ public class GameStateManager : MonoBehaviour
     public void SetWin()
     {
         currentPhase = GamePhase.Victory;
-        Debug.Log("VICTORY! - Press R to restart or N for next run");
+
+        // Complete the run - NEW
+        if (RunRecorder.Instance != null && TurnCounter.Instance != null)
+        {
+            RunRecorder.Instance.CompleteRun(TurnCounter.Instance.GetCurrentTurn());
+        }
+
+        Debug.Log("VICTORY! - Press N for next run or R to restart");
     }
     void CommitTurn()
     {
+        Debug.Log("Turn committed!");
         currentPhase = GamePhase.Executing;
 
         // Tell all entities to execute their planned actions
@@ -92,6 +242,12 @@ public class GameStateManager : MonoBehaviour
         foreach (EnemyController enemy in enemies)
         {
             enemy.ExecutePlannedMove();
+        }
+
+        // Tell all ghosts to execute - NEW
+        foreach (GhostPlayer ghost in activeGhosts)
+        {
+            ghost.ExecuteGhostTurn();
         }
 
         // Later: Tell ghosts to execute too
@@ -129,6 +285,15 @@ public class GameStateManager : MonoBehaviour
                 }
             }
 
+            // Check ghosts too - NEW
+            foreach (GhostPlayer ghost in activeGhosts)
+            {
+                if (ghost.IsExecuting())
+                {
+                    stillExecuting = true;
+                    break;
+                }
+            }
             yield return null;
         }
 
@@ -148,6 +313,7 @@ public class GameStateManager : MonoBehaviour
         // Only complete turn if game isn't over
         // Everyone done, complete turn
         OnTurnExecutionComplete();
+
     }
 
     public void OnTurnExecutionComplete()
@@ -177,6 +343,18 @@ public class GameStateManager : MonoBehaviour
     {
         currentPhase = GamePhase.GameOver;
 
+    }
+
+    void StartNextRun()
+    {
+        Debug.Log("Starting next run...");
+
+        // Reload scene but keep RunRecorder
+        UnityEngine.SceneManagement.SceneManager.LoadScene(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+        );
+
+        // RunRecorder persists (DontDestroyOnLoad), will start new run on scene load
     }
 
     void OnGUI()
@@ -217,6 +395,14 @@ public class GameStateManager : MonoBehaviour
             int turns = TurnCounter.Instance != null ? TurnCounter.Instance.GetCurrentTurn() : 0;
             GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 50),
                 $"Completed in {turns} turns\nPress R to Restart", smallStyle);
+
+            int runCount = RunRecorder.Instance != null ? RunRecorder.Instance.GetRunCount() : 0;
+ 
+            string message = runCount == 0
+                ? $"Run 1 completed in {turns} turns\n[N] Next Run  [R] Restart"
+                : $"Run {runCount + 1} completed in {turns} turns\n[N] Next Run  [R] Restart All";
+
+            GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 80), message, smallStyle);
         }
 
         // Show interaction hint - NEW
@@ -246,6 +432,19 @@ public class GameStateManager : MonoBehaviour
                     }
                 }
             }
+
+            // Add preview hint - NEW
+            GUIStyle previewStyle = new GUIStyle();
+            previewStyle.fontSize = 18;
+            previewStyle.normal.textColor = GhostPreview.Instance != null && GhostPreview.Instance.showingPreview
+                ? Color.cyan
+                : Color.gray;
+
+            string previewText = GhostPreview.Instance != null && GhostPreview.Instance.showingPreview
+                ? "[TAB] Hide Future Vision"
+                : "[TAB] Show Future Vision";
+
+            GUI.Label(new Rect(10, 110, 400, 30), previewText, previewStyle);
         }
 
 

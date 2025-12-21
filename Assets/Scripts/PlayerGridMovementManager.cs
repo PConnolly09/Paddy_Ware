@@ -140,12 +140,26 @@ public class PlayerGridMovement : MonoBehaviour
     public void ExecutePlannedMove()
     {
 
+        TurnAction action = new TurnAction();
+        action.startPosition = gridPosition;
+
         // If we have a target interaction, do that instead of moving
         if (targetInteractable != null && !targetInteractable.IsConsumed())
         {
             Debug.Log("Executing interaction");
+
+            action.endPosition = gridPosition; // Don't move
+            action.actionType = ActionType.Interact;
+            action.interactionTarget = targetInteractable.interactableID;
+
             targetInteractable.Interact(this);
             targetInteractable = null;
+
+            // Record the action - NEW
+            if (RunRecorder.Instance != null)
+            {
+                RunRecorder.Instance.RecordTurn(action);
+            }
 
             // Don't move, just complete turn
             OnMoveComplete();
@@ -159,6 +173,14 @@ public class PlayerGridMovement : MonoBehaviour
             targetWorldPosition = GridToWorld(gridPosition);
             isExecuting = true;
 
+            action.endPosition = plannedPosition;
+            action.actionType = ActionType.Move;
+
+            if (RunRecorder.Instance != null)
+            {
+                RunRecorder.Instance.RecordTurn(action);
+            }
+
             // Hide highlight during execution
             if (currentHighlight != null)
             {
@@ -169,6 +191,16 @@ public class PlayerGridMovement : MonoBehaviour
         {
             // Invalid move - just stay in place
             Debug.Log("Invalid move, staying in place");
+
+            action.endPosition = gridPosition;
+            action.actionType = ActionType.Wait;
+
+            // Record the action - NEW
+            if (RunRecorder.Instance != null)
+            {
+                RunRecorder.Instance.RecordTurn(action);
+            }
+
             OnMoveComplete();
         }
     }

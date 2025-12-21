@@ -5,6 +5,7 @@ public class ExplosiveBarrel : Interactable
 {
     public float tileSize = 1f;
     public int explosionRadius = 1; // How many tiles away it damages
+   // public bool showExplosionPreview = true; // NEW
 
     void Start()
     {
@@ -15,6 +16,7 @@ public class ExplosiveBarrel : Interactable
         }
     }
 
+
     public override void Interact(PlayerGridMovement player)
     {
         if (isConsumed)
@@ -24,6 +26,13 @@ public class ExplosiveBarrel : Interactable
         }
 
         Debug.Log($"Barrel at {gridPosition} EXPLODES!");
+
+        // Record consumption - NEW
+        if (RunRecorder.Instance != null)
+        {
+            RunRecorder.Instance.RecordResourceConsumption(interactableID);
+        }
+
 
         // Find and damage enemies in radius
         EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
