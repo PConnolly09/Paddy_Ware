@@ -160,23 +160,40 @@ public class GridManager : MonoBehaviour
 
     void SetupWalls()
     {
-        // Manually define some walls for testing
-        // You can make this more sophisticated later
-        wallPositions.Add(new Vector2Int(3, 3));
-        wallPositions.Add(new Vector2Int(3, 4));
-        wallPositions.Add(new Vector2Int(3, 5));
-        wallPositions.Add(new Vector2Int(5, 3));
-        wallPositions.Add(new Vector2Int(5, 4));
-        wallPositions.Add(new Vector2Int(5, 5));
+        // Clear any existing walls
+        wallPositions.Clear();
 
-        // Add more walls based on grid size
-        if (gridWidth > 10 || gridHeight > 10)
+
+        // Add some interior walls for Level 1 (8x8)
+        if (gridWidth == 8 && gridHeight == 8)
         {
-            // Bigger level = more walls
-            for (int i = 0; i < 10; i++)
+            wallPositions.Add(new Vector2Int(3, 3));
+            wallPositions.Add(new Vector2Int(3, 4));
+            wallPositions.Add(new Vector2Int(3, 5));
+            wallPositions.Add(new Vector2Int(5, 3));
+            wallPositions.Add(new Vector2Int(5, 4));
+            wallPositions.Add(new Vector2Int(5, 5));
+        }
+
+        // Add more interior walls for Level 2 (12x12)
+        if (gridWidth == 12 && gridHeight == 12)
+        {
+            // Create some corridors/obstacles
+            for (int i = 3; i < 9; i++)
             {
-                int x = Random.Range(1, gridWidth - 1);
-                int y = Random.Range(1, gridHeight - 1);
+                wallPositions.Add(new Vector2Int(i, 6));
+            }
+
+            for (int i = 2; i < 8; i++)
+            {
+                wallPositions.Add(new Vector2Int(6, i));
+            }
+
+            // Add random walls
+            for (int i = 0; i < 15; i++)
+            {
+                int x = Random.Range(2, gridWidth - 2);
+                int y = Random.Range(2, gridHeight - 2);
                 wallPositions.Add(new Vector2Int(x, y));
             }
         }

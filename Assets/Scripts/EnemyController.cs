@@ -83,6 +83,10 @@ public class EnemyController : MonoBehaviour
                 Mathf.RoundToInt(Mathf.Sin(angle) * patrolRadius)
             );
 
+            // Clamp to grid bounds - NEW
+            waypoint.x = Mathf.Clamp(waypoint.x, 0, gridManager.gridWidth - 1);
+            waypoint.y = Mathf.Clamp(waypoint.y, 0, gridManager.gridHeight - 1);
+
             // Make sure waypoint is valid
             if (gridManager != null && gridManager.IsWalkable(waypoint))
             {

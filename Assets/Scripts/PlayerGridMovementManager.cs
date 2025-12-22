@@ -15,6 +15,7 @@ public class PlayerGridMovement : MonoBehaviour
     private GameObject currentHighlight;
     private Interactable targetInteractable = null; // What we're planning to interact with
 
+
     void Start()
     {
         gridManager = FindAnyObjectByType<GridManager>();
@@ -234,10 +235,15 @@ public class PlayerGridMovement : MonoBehaviour
 
     bool IsValidPosition(Vector2Int pos)
     {
-        if (pos.x < 0 || pos.x >= 8 || pos.y < 0 || pos.y >= 8)
+        if (gridManager == null) return false;
+
+        // Check bounds
+        if (pos.x < 0 || pos.x >= gridManager.gridWidth ||
+            pos.y < 0 || pos.y >= gridManager.gridHeight)
             return false;
 
-        if (gridManager != null && !gridManager.IsWalkable(pos))
+        // Check walkability
+        if (!gridManager.IsWalkable(pos))
             return false;
 
         return true;
