@@ -108,14 +108,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnemyController
   tileSize: 1
   moveSpeed: 5
-  patrolPath:
-  - {x: 2, y: 3}
-  - {x: 4, y: 7}
-  - {x: 7, y: 1}
-  - {x: 5, y: 4}
-  - {x: 2, y: 3}
+  patrolPath: []
   visionRange: 3
   visionAngle: 90
+  useRandomPatrol: 1
+  patrolSeed: 1
 --- !u!120 &-3761881936822861576
 LineRenderer:
   serializedVersion: 2

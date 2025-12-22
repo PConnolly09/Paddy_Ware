@@ -5,24 +5,25 @@ using System.Collections.Generic;
 public class GridManager : MonoBehaviour
 {
 
-    
-    [Header ("Grid Settings")]
-    public float gridWidth = 8f;
-    public float gridHeight = 8f;
+
+    [Header("Grid Settings")]
+    public int gridWidth = 8;
+    public int gridHeight = 8;
+    public float tileSize = 1f;
+    [Header("Level Configuration")]
+    public int randomSeed = 12345; // Different seed per level
+    public Vector2Int exitPosition = new Vector2Int(7, 7);
+    public int barrelCount = 1;
+    public int smokeBombCount = 0; // NEW
+
+    [Header("Prefabs")]
     public GameObject floorTilePrefab;
     public GameObject wallTilePrefab;
-    private GameObject[,] gridCells;
-    private float cellSize = 1f;
+    public GameObject barrelPrefab;
+    public GameObject smokeBombPrefab;
+    public GameObject exitPrefab;
 
-
-    // Define which tiles are walls
     private HashSet<Vector2Int> wallPositions = new HashSet<Vector2Int>();
-
-
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    // GridManager.cs - Add these fields at top
-    public GameObject barrelPrefab; // Assign in inspector
-    public GameObject exitPrefab;   // Assign in inspector
 
     void Start()
     {
@@ -31,74 +32,95 @@ public class GridManager : MonoBehaviour
 
         SetupWalls();
         GenerateGrid();
-        SpawnBarrel();  // NEW
+        // Spawn multiple barrels - UPDATED
+        for (int i = 0; i < barrelCount; i++)
+        {
+            SpawnBarrel(i);
+        }
+
+        // Spawn multiple smoke bombs - NEW
+        for (int i = 0; i < smokeBombCount; i++)
+        {
+            SpawnSmokeBomb(i);
+        }
+
         SpawnExit();    // NEW
     }
 
     // NEW METHOD
-    void SpawnBarrel()
+    void SpawnBarrel(int index) // Added index parameter
     {
-        if (barrelPrefab == null)
-        {
-            Debug.LogWarning("Barrel prefab not assigned to GridManager");
-            return;
-        }
+        if (barrelPrefab == null) return;
 
-        // Avoid spawning near player start (0, 0)
         Vector2Int barrelPos = GetRandomWalkablePosition(Vector2Int.zero, 3);
 
         if (barrelPos == new Vector2Int(-1, -1))
         {
-            Debug.LogError("No walkable positions found for barrel!");
+            Debug.LogError($"No walkable position for barrel {index}!");
             return;
         }
 
-        // Instantiate barrel
         GameObject barrel = Instantiate(barrelPrefab);
         ExplosiveBarrel barrelScript = barrel.GetComponent<ExplosiveBarrel>();
 
         if (barrelScript != null)
         {
             barrelScript.gridPosition = barrelPos;
-            barrelScript.interactableID = $"barrel_{barrelPos.x}_{barrelPos.y}";
-            barrel.transform.position = new Vector3(barrelPos.x * cellSize, barrelPos.y * cellSize, 0);
+            barrelScript.interactableID = $"barrel_{index}"; // Use index for unique ID
+            barrel.transform.position = new Vector3(barrelPos.x * tileSize, barrelPos.y * tileSize, 0);
 
-            Debug.Log($"Spawned barrel at {barrelPos}");
+            Debug.Log($"Spawned barrel {index} at {barrelPos}");
         }
     }
 
-    // NEW METHOD
-    void SpawnExit()
+    void SpawnSmokeBomb(int index) // Added index parameter
     {
-        if (exitPrefab == null)
+        if (smokeBombPrefab == null) return;
+
+        Vector2Int smokePos = GetRandomWalkablePosition(Vector2Int.zero, 3);
+
+        if (smokePos == new Vector2Int(-1, -1))
         {
-            Debug.LogWarning("Exit prefab not assigned to GridManager");
+            Debug.LogError($"No walkable position for smoke bomb {index}!");
             return;
         }
 
-        Vector2Int exitPos = new Vector2Int(7, 7);
+        GameObject smoke = Instantiate(smokeBombPrefab);
+        SmokeBomb smokeScript = smoke.GetComponent<SmokeBomb>();
 
-        // Make sure exit position is walkable
-        if (!IsWalkable(exitPos))
+        if (smokeScript != null)
         {
-            Debug.LogWarning($"Exit position {exitPos} is blocked by wall, finding alternative");
-            exitPos = GetRandomWalkablePosition();
+            smokeScript.gridPosition = smokePos;
+            smokeScript.interactableID = $"smoke_{index}"; // Use index for unique ID
+            smoke.transform.position = new Vector3(smokePos.x * tileSize, smokePos.y * tileSize, 0);
+
+            Debug.Log($"Spawned smoke bomb {index} at {smokePos}");
+        }
+    }
+    // NEW METHOD
+    void SpawnExit()
+    {
+        if (exitPrefab == null) return;
+
+        // Use configurable exit position - UPDATED
+        if (!IsWalkable(exitPosition))
+        {
+            Debug.LogWarning($"Exit position {exitPosition} is blocked, finding alternative");
+            exitPosition = GetRandomWalkablePosition();
         }
 
-        // Instantiate exit
         GameObject exit = Instantiate(exitPrefab);
         ExitTile exitScript = exit.GetComponent<ExitTile>();
 
         if (exitScript != null)
         {
-            exitScript.gridPosition = exitPos;
-            exit.transform.position = new Vector3(exitPos.x * cellSize, exitPos.y * cellSize, 0);
+            exitScript.gridPosition = exitPosition;
+            exit.transform.position = new Vector3(exitPosition.x * tileSize, exitPosition.y * tileSize, 0);
 
-            Debug.Log($"Spawned exit at {exitPos}");
+            Debug.Log($"Spawned exit at {exitPosition}");
         }
     }
 
-    // NEW METHOD - Helper to find random walkable spot
     Vector2Int GetRandomWalkablePosition(Vector2Int avoidPosition = default, int minDistance = 2)
     {
         List<Vector2Int> walkablePositions = new List<Vector2Int>();
@@ -111,11 +133,10 @@ public class GridManager : MonoBehaviour
 
                 if (IsWalkable(pos))
                 {
-                    // If avoiding a position, check distance
                     if (avoidPosition != default)
                     {
                         float dist = Vector2Int.Distance(pos, avoidPosition);
-                        if (dist < minDistance) continue; // Too close, skip
+                        if (dist < minDistance) continue;
                     }
 
                     walkablePositions.Add(pos);
@@ -140,41 +161,46 @@ public class GridManager : MonoBehaviour
     void SetupWalls()
     {
         // Manually define some walls for testing
-        // Make a simple corridor or room shape
-        for (int i = 0; i < gridWidth; i++)
+        // You can make this more sophisticated later
+        wallPositions.Add(new Vector2Int(3, 3));
+        wallPositions.Add(new Vector2Int(3, 4));
+        wallPositions.Add(new Vector2Int(3, 5));
+        wallPositions.Add(new Vector2Int(5, 3));
+        wallPositions.Add(new Vector2Int(5, 4));
+        wallPositions.Add(new Vector2Int(5, 5));
 
-            for (int j = 0; j < gridHeight; j++)
+        // Add more walls based on grid size
+        if (gridWidth > 10 || gridHeight > 10)
+        {
+            // Bigger level = more walls
+            for (int i = 0; i < 10; i++)
             {
-
-                if (i != 0 && j != 0)
-                {
-                    if (Random.value < 0.2f)
-                    {
-                        wallPositions.Add(new Vector2Int(i, j));
-                    }
-                }
-               // }
-            }     
+                int x = Random.Range(1, gridWidth - 1);
+                int y = Random.Range(1, gridHeight - 1);
+                wallPositions.Add(new Vector2Int(x, y));
+            }
+        }
     }
 
     void GenerateGrid()
     {
-        int cellsX = Mathf.CeilToInt(gridWidth / cellSize);
-        int cellsY = Mathf.CeilToInt(gridHeight / cellSize);
-        gridCells = new GameObject[cellsX, cellsY];
-        for (int x = 0; x < cellsX; x++)
+        for (int x = 0; x < gridWidth; x++)
         {
-            for (int y = 0; y < cellsY; y++)
+            for (int y = 0; y < gridHeight; y++)
             {
-                Vector3 cellPosition = new Vector3(x * cellSize, y * cellSize, 0);
+                Vector3 pos = new Vector3(x * tileSize, y * tileSize, 0);
                 Vector2Int gridPos = new Vector2Int(x, y);
 
-                // Spawn wall or floor based on data
                 GameObject prefab = wallPositions.Contains(gridPos) ? wallTilePrefab : floorTilePrefab;
-                Instantiate(prefab, cellPosition, Quaternion.identity, transform);
+                GameObject tile = Instantiate(prefab, pos, Quaternion.identity, transform);
+
+                SpriteRenderer sr = tile.GetComponent<SpriteRenderer>();
+                if (sr != null)
+                {
+                    sr.sortingOrder = wallPositions.Contains(gridPos) ? 1 : 0;
+                }
             }
         }
-
     }
 
 }

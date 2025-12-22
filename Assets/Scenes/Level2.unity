@@ -419,11 +419,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9e6398cff03ae2141ac478571410173e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GridManager
-  gridWidth: 8
-  gridHeight: 8
+  gridWidth: 12
+  gridHeight: 12
+  tileSize: 1
+  randomSeed: 54321
+  exitPosition: {x: 11, y: 11}
+  barrelCount: 2
+  smokeBombCount: 1
   floorTilePrefab: {fileID: 267895692946118452, guid: edd6c9c1bdbd8524a85fd60e072bb5a6, type: 3}
   wallTilePrefab: {fileID: 8969742089351428078, guid: ee12421bfa9484645954bc2d87cbd755, type: 3}
   barrelPrefab: {fileID: 4004244036235914996, guid: a844f130583f17b44b3512d80ba3de49, type: 3}
+  smokeBombPrefab: {fileID: 3938883006035573166, guid: e256b6c4527b9de47bc1722e404ede3c, type: 3}
   exitPrefab: {fileID: 5529770330370794563, guid: 5dc78b333095491468be5ec308458a87, type: 3}
 --- !u!4 &544232869
 Transform:
@@ -576,6 +582,63 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &1796453987
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 3.070839
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 3.7582734
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 194511297162951073, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1710265828834359456, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
+      propertyPath: m_Name
+      value: Enemy (1)
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 51e576cf3af027e4092455ce7b909fe4, type: 3}
 --- !u!1001 &944930363078743342
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -649,3 +712,4 @@ SceneRoots:
   - {fileID: 29370184}
   - {fileID: 457494297}
   - {fileID: 361280458}
+  - {fileID: 1796453987}

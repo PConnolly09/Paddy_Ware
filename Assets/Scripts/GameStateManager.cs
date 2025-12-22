@@ -20,6 +20,8 @@ public class GameStateManager : MonoBehaviour
     // Add field
     private List<GhostPlayer> activeGhosts = new List<GhostPlayer>();
     public GameObject ghostPrefab; // Assign in inspector
+                                   // Add field
+    private bool canProgressToNextLevel = false;
     void Awake()
     {
         if (Instance == null)
@@ -67,7 +69,14 @@ public class GameStateManager : MonoBehaviour
 
         if (currentPhase == GamePhase.Victory)
         {
-            if (Input.GetKeyDown(KeyCode.N)) // NEW - next run
+            if (canProgressToNextLevel && Input.GetKeyDown(KeyCode.L))
+            {
+                if (LevelManager.Instance != null)
+                {
+                    LevelManager.Instance.CompleteLevel();
+                }
+            }
+            else if (Input.GetKeyDown(KeyCode.N))
             {
                 StartNextRun();
             }
@@ -222,7 +231,15 @@ public class GameStateManager : MonoBehaviour
         {
             RunRecorder.Instance.CompleteRun(TurnCounter.Instance.GetCurrentTurn());
         }
+        // Check if level has win condition (need X runs to unlock next level?) - NEW
+        int runCount = RunRecorder.Instance != null ? RunRecorder.Instance.GetRunCount() : 0;
 
+        // Simple: complete 3 runs to unlock next level
+        if (runCount >= 3)
+        {
+            Debug.Log("Level requirements met! Can progress to next level");
+            canProgressToNextLevel = true;
+        }
         Debug.Log("VICTORY! - Press N for next run or R to restart");
     }
     void CommitTurn()
@@ -359,7 +376,31 @@ public class GameStateManager : MonoBehaviour
 
     void OnGUI()
     {
-        // Phase indicator (existing)
+        // GAME OVER - Takes over entire screen
+        if (currentPhase == GamePhase.GameOver)
+        {
+            DrawGameOverScreen();
+            return; // Don't draw anything else
+        }
+
+        // VICTORY - Takes over entire screen
+        if (currentPhase == GamePhase.Victory)
+        {
+            DrawVictoryScreen();
+            return; // Don't draw anything else
+        }
+
+        // NORMAL GAMEPLAY UI
+        DrawPhaseIndicator();
+
+        if (currentPhase == GamePhase.Planning)
+        {
+            DrawPlanningHints();
+        }
+    }
+
+    void DrawPhaseIndicator()
+    {
         GUIStyle style = new GUIStyle();
         style.fontSize = 20;
         style.normal.textColor = Color.yellow;
@@ -369,109 +410,127 @@ public class GameStateManager : MonoBehaviour
             GamePhase.Planning => "PLANNING - Hold WASD to preview, SPACE to commit",
             GamePhase.Executing => "EXECUTING...",
             GamePhase.Complete => "Turn complete",
-            GamePhase.GameOver => "*** GAME OVER *** - Press R to restart",
-            GamePhase.Victory => "*** VICTORY *** - Press R to restart", // NEW
             _ => ""
         };
 
         GUI.Label(new Rect(10, 50, 600, 30), phaseText, style);
+    }
 
-        // Victory screen - NEW
-        if (currentPhase == GamePhase.Victory)
+    void DrawPlanningHints()
+    {
+        int yOffset = 80;
+
+        // Check for nearby interactables
+        PlayerGridMovement player = FindAnyObjectByType<PlayerGridMovement>();
+        if (player != null)
         {
-            GUIStyle bigStyle = new GUIStyle();
-            bigStyle.fontSize = 48;
-            bigStyle.normal.textColor = Color.green;
-            bigStyle.alignment = TextAnchor.MiddleCenter;
+            Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
 
-            GUI.Label(new Rect(0, Screen.height / 2 - 50, Screen.width, 100), "VICTORY!", bigStyle);
-
-            GUIStyle smallStyle = new GUIStyle();
-            smallStyle.fontSize = 24;
-            smallStyle.normal.textColor = Color.white;
-            smallStyle.alignment = TextAnchor.MiddleCenter;
-
-            // Show turn count
-            int turns = TurnCounter.Instance != null ? TurnCounter.Instance.GetCurrentTurn() : 0;
-            GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 50),
-                $"Completed in {turns} turns\nPress R to Restart", smallStyle);
-
-            int runCount = RunRecorder.Instance != null ? RunRecorder.Instance.GetRunCount() : 0;
- 
-            string message = runCount == 0
-                ? $"Run 1 completed in {turns} turns\n[N] Next Run  [R] Restart"
-                : $"Run {runCount + 1} completed in {turns} turns\n[N] Next Run  [R] Restart All";
-
-            GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 80), message, smallStyle);
-        }
-
-        // Show interaction hint - NEW
-        if (currentPhase == GamePhase.Planning)
-        {
-            PlayerGridMovement player = FindAnyObjectByType<PlayerGridMovement>();
-            if (player != null)
+            foreach (Interactable obj in interactables)
             {
-                // Check for nearby interactables
-                Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
+                if (obj.IsConsumed()) continue;
 
-                foreach (Interactable obj in interactables)
+                float dist = Vector2Int.Distance(player.GetGridPosition(), obj.GetGridPosition());
+
+                if (dist <= 1.5f)
                 {
-                    if (obj.IsConsumed()) continue;
+                    GUIStyle hintStyle = new GUIStyle();
+                    hintStyle.fontSize = 18;
+                    hintStyle.normal.textColor = Color.cyan;
 
-                    float dist = Vector2Int.Distance(player.GetGridPosition(), obj.GetGridPosition());
-
-                    if (dist <= 1.5f)
-                    {
-                        GUIStyle hintStyle = new GUIStyle();
-                        hintStyle.fontSize = 18;
-                        hintStyle.normal.textColor = Color.cyan;
-
-                        GUI.Label(new Rect(10, 80, 400, 30),
-                            $"[E] {obj.GetInteractionPreview()}", hintStyle);
-                        break;
-                    }
+                    GUI.Label(new Rect(10, yOffset, 400, 30),
+                        $"[E] {obj.GetInteractionPreview()}", hintStyle);
+                    yOffset += 30;
+                    break; // Only show one interaction at a time
                 }
             }
-
-            // Add preview hint - NEW
-            GUIStyle previewStyle = new GUIStyle();
-            previewStyle.fontSize = 18;
-            previewStyle.normal.textColor = GhostPreview.Instance != null && GhostPreview.Instance.showingPreview
-                ? Color.cyan
-                : Color.gray;
-
-            string previewText = GhostPreview.Instance != null && GhostPreview.Instance.showingPreview
-                ? "[TAB] Hide Future Vision"
-                : "[TAB] Show Future Vision";
-
-            GUI.Label(new Rect(10, 110, 400, 30), previewText, previewStyle);
         }
 
+        // Future vision hint
+        GUIStyle previewStyle = new GUIStyle();
+        previewStyle.fontSize = 18;
+        previewStyle.normal.textColor = GhostPreview.Instance != null && GhostPreview.Instance.showingPreview
+            ? Color.cyan
+            : Color.gray;
 
+        string previewText = GhostPreview.Instance != null && GhostPreview.Instance.showingPreview
+            ? "[TAB] Hide Future Vision"
+            : "[TAB] Show Future Vision";
 
+        GUI.Label(new Rect(10, yOffset, 400, 30), previewText, previewStyle);
+    }
 
-        // BIG GAME OVER SCREEN (new)
-        if (currentPhase == GamePhase.GameOver)
+    void DrawGameOverScreen()
+    {
+        // Dark overlay
+        GUI.color = new Color(0, 0, 0, 0.8f);
+        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+        GUI.color = Color.white;
+
+        // Big red text
+        GUIStyle bigStyle = new GUIStyle();
+        bigStyle.fontSize = 48;
+        bigStyle.normal.textColor = Color.red;
+        bigStyle.alignment = TextAnchor.MiddleCenter;
+
+        GUI.Label(new Rect(0, Screen.height / 2 - 50, Screen.width, 100), "GAME OVER", bigStyle);
+
+        // Restart instruction
+        GUIStyle smallStyle = new GUIStyle();
+        smallStyle.fontSize = 24;
+        smallStyle.normal.textColor = Color.white;
+        smallStyle.alignment = TextAnchor.MiddleCenter;
+
+        GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 50), "Press R to Restart", smallStyle);
+    }
+
+    void DrawVictoryScreen()
+    {
+        // Dark overlay
+        GUI.color = new Color(0, 0, 0, 0.8f);
+        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+        GUI.color = Color.white;
+
+        // Big green text
+        GUIStyle bigStyle = new GUIStyle();
+        bigStyle.fontSize = 48;
+        bigStyle.normal.textColor = Color.green;
+        bigStyle.alignment = TextAnchor.MiddleCenter;
+
+        GUI.Label(new Rect(0, Screen.height / 2 - 80, Screen.width, 100), "VICTORY!", bigStyle);
+
+        // Stats and options
+        GUIStyle smallStyle = new GUIStyle();
+        smallStyle.fontSize = 20;
+        smallStyle.normal.textColor = Color.white;
+        smallStyle.alignment = TextAnchor.MiddleCenter;
+
+        int turns = TurnCounter.Instance != null ? TurnCounter.Instance.GetCurrentTurn() : 0;
+        int runCount = RunRecorder.Instance != null ? RunRecorder.Instance.GetRunCount() : 0;
+
+        // Turn count
+        GUI.Label(new Rect(0, Screen.height / 2 - 20, Screen.width, 30),
+            $"Completed in {turns} turns", smallStyle);
+
+        // Run count
+        GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 30),
+            $"Run #{runCount} complete", smallStyle);
+
+        // Progress to next level
+        int runsNeeded = 3;
+        string progressText;
+
+        if (canProgressToNextLevel)
         {
-            // Semi-transparent dark overlay
-            GUI.Box(new Rect(0, 0, Screen.width, Screen.height), "");
-
-            // Big red text
-            GUIStyle bigStyle = new GUIStyle();
-            bigStyle.fontSize = 48;
-            bigStyle.normal.textColor = Color.red;
-            bigStyle.alignment = TextAnchor.MiddleCenter;
-
-            GUI.Label(new Rect(0, Screen.height / 2 - 50, Screen.width, 100), "GAME OVER", bigStyle);
-
-            // Smaller restart instruction
-            GUIStyle smallStyle = new GUIStyle();
-            smallStyle.fontSize = 24;
-            smallStyle.normal.textColor = Color.white;
-            smallStyle.alignment = TextAnchor.MiddleCenter;
-
-            GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 50), "Press R to Restart", smallStyle);
+            progressText = "[L] Next Level  |  [N] Next Run  |  [R] Restart All";
         }
+        else
+        {
+            int runsRemaining = runsNeeded - runCount;
+            progressText = $"[N] Next Run ({runsRemaining} more for next level)  |  [R] Restart All";
+        }
+
+        GUI.Label(new Rect(0, Screen.height / 2 + 50, Screen.width, 30), progressText, smallStyle);
     }
 
 }

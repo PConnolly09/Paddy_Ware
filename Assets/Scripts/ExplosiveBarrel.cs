@@ -1,11 +1,13 @@
 // ExplosiveBarrel.cs - NEW SCRIPT
+using System.Collections.Generic;
 using UnityEngine;
 
 public class ExplosiveBarrel : Interactable
 {
     public float tileSize = 1f;
-    public int explosionRadius = 1; // How many tiles away it damages
-   // public bool showExplosionPreview = true; // NEW
+    public int explosionRadius = 3; // How many tiles away it damages
+    public int fuseDelay = 0; // Turns before explosion (0 = immediate)
+    public bool showExplosionPreview = true; // NEW
 
     void Start()
     {
@@ -13,6 +15,15 @@ public class ExplosiveBarrel : Interactable
         if (string.IsNullOrEmpty(interactableID))
         {
             interactableID = $"barrel_{gridPosition.x}_{gridPosition.y}";
+        }
+    }
+
+    void Update()
+    {
+        // Show explosion radius when player is adjacent - NEW
+        if (showExplosionPreview && !isConsumed)
+        {
+            ShowExplosionPreview();
         }
     }
 
@@ -55,12 +66,21 @@ public class ExplosiveBarrel : Interactable
         // TODO: Particle effect, sound, screen shake
     }
 
-    void KillEnemy(EnemyController enemy)
+    void ShowExplosionPreview()
     {
-        // For now, just destroy the enemy
-        Destroy(enemy.gameObject);
+        if (GameStateManager.Instance == null || GameStateManager.Instance.currentPhase != GamePhase.Planning)
+            return;
 
-        // TODO: Death animation, corpse left behind, etc
+        PlayerGridMovement player = FindAnyObjectByType<PlayerGridMovement>();
+        if (player == null) return;
+
+        float dist = Vector2Int.Distance(player.GetGridPosition(), gridPosition);
+
+        // Only show when adjacent
+        if (dist > 1.5f) return;
+
+        // Draw explosion radius in Scene view (already have OnDrawGizmos)
+        // Could also add a runtime circle renderer here
     }
 
     public override string GetInteractionPreview()
@@ -70,9 +90,9 @@ public class ExplosiveBarrel : Interactable
             return "Barrel (already used)";
         }
 
-        // Count enemies in range
+        // Show which enemies will be hit - IMPROVED
         EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
-        int enemiesInRange = 0;
+        List<Vector2Int> enemiesInRange = new List<Vector2Int>();
 
         foreach (EnemyController enemy in enemies)
         {
@@ -81,12 +101,28 @@ public class ExplosiveBarrel : Interactable
 
             if (distance <= explosionRadius)
             {
-                enemiesInRange++;
+                enemiesInRange.Add(enemyPos);
             }
         }
 
-        return $"Trigger Barrel (will hit {enemiesInRange} enemies)";
+        if (enemiesInRange.Count > 0)
+        {
+            return $"Trigger Barrel (will hit {enemiesInRange.Count} enemies at {string.Join(", ", enemiesInRange)})";
+        }
+        else
+        {
+            return "Trigger Barrel (no enemies in range)";
+        }
     }
+
+    void KillEnemy(EnemyController enemy)
+    {
+        // For now, just destroy the enemy
+        Destroy(enemy.gameObject);
+
+        // TODO: Death animation, corpse left behind, etc
+    }
+
 
     // Visualize explosion radius
     void OnDrawGizmos()

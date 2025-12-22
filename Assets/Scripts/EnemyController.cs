@@ -17,6 +17,9 @@ public class EnemyController : MonoBehaviour
     private Vector3 targetWorldPosition;
     private bool isExecuting = false;
 
+    public bool useRandomPatrol = true;
+    public int patrolSeed = 0; // Set different seeds for different enemies
+
     // Facing direction (for vision cone)
     private Vector2Int facingDirection = Vector2Int.up;
 
@@ -24,6 +27,11 @@ public class EnemyController : MonoBehaviour
     {
         gridManager = FindAnyObjectByType<GridManager>();
 
+        // Generate patrol if needed - NEW
+        if (useRandomPatrol && (patrolPath == null || patrolPath.Count == 0))
+        {
+            GeneratePatrolPath();
+        }
         // Start at first waypoint
         if (patrolPath.Count > 0)
         {
@@ -46,6 +54,51 @@ public class EnemyController : MonoBehaviour
         {
             ExecuteMovement();
         }
+    }
+
+    // NEW METHOD
+    void GeneratePatrolPath()
+    {
+        // Use seed for deterministic generation
+        Random.State oldState = Random.state;
+        Random.InitState(patrolSeed);
+
+        patrolPath = new List<Vector2Int>();
+
+        // Start from enemy's current grid position
+        Vector2Int start = new Vector2Int(
+            Mathf.RoundToInt(transform.position.x / tileSize),
+            Mathf.RoundToInt(transform.position.y / tileSize)
+        );
+
+        // Generate 4-6 waypoints in a rough circle/rectangle
+        int waypointCount = Random.Range(4, 7);
+        float patrolRadius = Random.Range(2f, 4f);
+
+        for (int i = 0; i < waypointCount; i++)
+        {
+            float angle = (i / (float)waypointCount) * Mathf.PI * 2;
+            Vector2Int waypoint = start + new Vector2Int(
+                Mathf.RoundToInt(Mathf.Cos(angle) * patrolRadius),
+                Mathf.RoundToInt(Mathf.Sin(angle) * patrolRadius)
+            );
+
+            // Make sure waypoint is valid
+            if (gridManager != null && gridManager.IsWalkable(waypoint))
+            {
+                patrolPath.Add(waypoint);
+            }
+        }
+
+        // If no valid waypoints, just stay in place
+        if (patrolPath.Count == 0)
+        {
+            patrolPath.Add(start);
+        }
+
+        Random.state = oldState; // Restore random state
+
+        Debug.Log($"Generated patrol with {patrolPath.Count} waypoints for enemy at {start}");
     }
 
     void PlanNextMove()
