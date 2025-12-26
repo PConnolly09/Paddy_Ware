@@ -226,11 +226,6 @@ public class PlayerGridMovement : MonoBehaviour
     {
         isExecuting = false;
 
-        // Tell game manager we're done
-        if (GameStateManager.Instance != null)
-        {
-            GameStateManager.Instance.OnTurnExecutionComplete();
-        }
     }
 
     bool IsValidPosition(Vector2Int pos)

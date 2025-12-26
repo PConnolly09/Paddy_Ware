@@ -198,6 +198,7 @@ GameObject:
   m_Component:
   - component: {fileID: 95272125}
   - component: {fileID: 95272124}
+  - component: {fileID: 95272126}
   m_Layer: 0
   m_Name: GameStateManager
   m_TagString: Untagged
@@ -234,6 +235,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &95272126
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 95272123}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a35223b43a00ad4db66f4c30ec3c1ea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DebugResourceSystem
 --- !u!1 &361280456
 GameObject:
   m_ObjectHideFlags: 0
@@ -263,7 +276,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9c238244425ff974f8e722dcf7dcaffd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GhostPreview
-  ghostPreviewPrefab: {fileID: 7535277933602374943, guid: a51de90b94fa2294db56f5563be2b8ae, type: 3}
   showingPreview: 0
   turnsToPreview: 5
 --- !u!4 &361280458
@@ -424,11 +436,13 @@ MonoBehaviour:
   tileSize: 1
   randomSeed: 12345
   exitPosition: {x: 7, y: 7}
-  barrelCount: 1
+  powderKegCount: 1
+  remoteBombCount: 1
   smokeBombCount: 1
   floorTilePrefab: {fileID: 267895692946118452, guid: edd6c9c1bdbd8524a85fd60e072bb5a6, type: 3}
   wallTilePrefab: {fileID: 8969742089351428078, guid: ee12421bfa9484645954bc2d87cbd755, type: 3}
-  barrelPrefab: {fileID: 4004244036235914996, guid: a844f130583f17b44b3512d80ba3de49, type: 3}
+  powderKegPrefab: {fileID: 4004244036235914996, guid: a844f130583f17b44b3512d80ba3de49, type: 3}
+  remoteBombPrefab: {fileID: 3078639150426486148, guid: ae10c8b307e05554380476f1e9f3ba9a, type: 3}
   smokeBombPrefab: {fileID: 3938883006035573166, guid: e256b6c4527b9de47bc1722e404ede3c, type: 3}
   exitPrefab: {fileID: 5529770330370794563, guid: 5dc78b333095491468be5ec308458a87, type: 3}
 --- !u!4 &544232869

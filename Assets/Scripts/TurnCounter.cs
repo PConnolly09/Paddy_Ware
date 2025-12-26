@@ -17,6 +17,7 @@ public class TurnCounter : MonoBehaviour
     public void IncrementTurn()
     {
         currentTurn++;
+
     }
 
     void OnGUI()

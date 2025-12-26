@@ -329,24 +329,31 @@ public class GameStateManager : MonoBehaviour
 
         // Only complete turn if game isn't over
         // Everyone done, complete turn
+        Debug.Log("TURN EXECUTION COMPLETE");
         OnTurnExecutionComplete();
 
     }
 
+    // In GameStateManager.OnTurnExecutionComplete():
     public void OnTurnExecutionComplete()
     {
-        // DON'T change phase if game over
         if (currentPhase == GamePhase.GameOver)
         {
-            Debug.Log("Turn complete but game is over, not changing phase");
             return;
         }
-        // Called when all entities finish moving
+
         currentPhase = GamePhase.Complete;
 
         if (TurnCounter.Instance != null)
         {
             TurnCounter.Instance.IncrementTurn();
+        }
+
+        // Update powder kegs - NEW
+        PowderKeg[] kegs = FindObjectsByType<PowderKeg>(FindObjectsSortMode.None);
+        foreach (PowderKeg keg in kegs)
+        {
+            keg.OnTurnComplete();
         }
     }
 

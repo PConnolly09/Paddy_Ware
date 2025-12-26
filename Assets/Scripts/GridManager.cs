@@ -13,13 +13,15 @@ public class GridManager : MonoBehaviour
     [Header("Level Configuration")]
     public int randomSeed = 12345; // Different seed per level
     public Vector2Int exitPosition = new Vector2Int(7, 7);
-    public int barrelCount = 1;
-    public int smokeBombCount = 0; // NEW
+    public int powderKegCount = 1; // RENAMED from barrelCount
+    public int remoteBombCount = 0; // NEW
+    public int smokeBombCount = 0;
 
     [Header("Prefabs")]
     public GameObject floorTilePrefab;
     public GameObject wallTilePrefab;
-    public GameObject barrelPrefab;
+    public GameObject powderKegPrefab; // RENAMED from barrelPrefab
+    public GameObject remoteBombPrefab; // NEW
     public GameObject smokeBombPrefab;
     public GameObject exitPrefab;
 
@@ -27,49 +29,113 @@ public class GridManager : MonoBehaviour
 
     void Start()
     {
-        // Set fixed seed for deterministic generation - NEW
-        Random.InitState(481516); // Any number, but keep it the same
+        Random.InitState(randomSeed);
 
         SetupWalls();
         GenerateGrid();
-        // Spawn multiple barrels - UPDATED
-        for (int i = 0; i < barrelCount; i++)
+
+        // Spawn everything FIRST
+        for (int i = 0; i < powderKegCount; i++)
         {
-            SpawnBarrel(i);
+            SpawnPowderKeg(i);
         }
 
-        // Spawn multiple smoke bombs - NEW
+        for (int i = 0; i < remoteBombCount; i++)
+        {
+            SpawnRemoteBomb(i);
+        }
+
         for (int i = 0; i < smokeBombCount; i++)
         {
             SpawnSmokeBomb(i);
         }
 
-        SpawnExit();    // NEW
+        SpawnExit();
+
+        // THEN disable consumed ones - ADD DEBUG
+        DisableConsumedResources();
     }
 
-    // NEW METHOD
-    void SpawnBarrel(int index) // Added index parameter
+    void DisableConsumedResources()
     {
-        if (barrelPrefab == null) return;
-
-        Vector2Int barrelPos = GetRandomWalkablePosition(Vector2Int.zero, 3);
-
-        if (barrelPos == new Vector2Int(-1, -1))
+        if (RunRecorder.Instance == null)
         {
-            Debug.LogError($"No walkable position for barrel {index}!");
+            Debug.Log("No RunRecorder, first run - all resources available");
             return;
         }
 
-        GameObject barrel = Instantiate(barrelPrefab);
-        ExplosiveBarrel barrelScript = barrel.GetComponent<ExplosiveBarrel>();
+        List<string> consumedIDs = RunRecorder.Instance.GetAllConsumedResources();
 
-        if (barrelScript != null)
+        Debug.Log($"=== DISABLING CONSUMED RESOURCES ===");
+        Debug.Log($"Consumed count: {consumedIDs.Count}");
+        foreach (string id in consumedIDs)
         {
-            barrelScript.gridPosition = barrelPos;
-            barrelScript.interactableID = $"barrel_{index}"; // Use index for unique ID
-            barrel.transform.position = new Vector3(barrelPos.x * tileSize, barrelPos.y * tileSize, 0);
+            Debug.Log($"  - {id}");
+        }
 
-            Debug.Log($"Spawned barrel {index} at {barrelPos}");
+        Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
+        Debug.Log($"Found {interactables.Length} total interactables in scene");
+
+        foreach (Interactable obj in interactables)
+        {
+            Debug.Log($"Checking: {obj.interactableID}");
+
+            if (consumedIDs.Contains(obj.interactableID))
+            {
+                Debug.Log($"*** CONSUMING: {obj.interactableID} ***");
+                obj.Consume();
+            }
+        }
+    }
+
+    // NEW METHOD
+    void SpawnPowderKeg(int index)
+    {
+        if (powderKegPrefab == null) return;
+
+        Vector2Int pos = GetRandomWalkablePosition(Vector2Int.zero, 3);
+
+        if (pos == new Vector2Int(-1, -1))
+        {
+            Debug.LogError($"No walkable position for powder keg {index}!");
+            return;
+        }
+
+        GameObject keg = Instantiate(powderKegPrefab);
+        PowderKeg kegScript = keg.GetComponent<PowderKeg>();
+
+        if (kegScript != null)
+        {
+            kegScript.gridPosition = pos;
+            kegScript.interactableID = $"keg_{index}";
+            keg.transform.position = new Vector3(pos.x * tileSize, pos.y * tileSize, 0);
+
+            Debug.Log($"Spawned powder keg {index} at {pos}");
+        }
+    }
+
+    void SpawnRemoteBomb(int index)
+    {
+        if (remoteBombPrefab == null) return;
+
+        Vector2Int pos = GetRandomWalkablePosition(Vector2Int.zero, 3);
+
+        if (pos == new Vector2Int(-1, -1))
+        {
+            Debug.LogError($"No walkable position for remote bomb {index}!");
+            return;
+        }
+
+        GameObject bomb = Instantiate(remoteBombPrefab);
+        RemoteBomb bombScript = bomb.GetComponent<RemoteBomb>();
+
+        if (bombScript != null)
+        {
+            bombScript.gridPosition = pos;
+            bombScript.interactableID = $"bomb_{pos.x}_{pos.y}"; // IMPORTANT: Use position-based ID
+            bomb.transform.position = new Vector3(pos.x * tileSize, pos.y * tileSize, 0);
+
+            Debug.Log($"Spawned remote bomb {index} at {pos}");
         }
     }
 
