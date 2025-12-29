@@ -13,7 +13,6 @@ public class PlayerGridMovement : MonoBehaviour
     private Vector3 targetWorldPosition;
     private bool isExecuting = false; // NEW - are we animating?
     private GameObject currentHighlight;
-    private Interactable targetInteractable = null; // What we're planning to interact with
 
 
     void Start()
@@ -58,7 +57,6 @@ public class PlayerGridMovement : MonoBehaviour
         if (inputDirection != Vector2Int.zero)
         {
             plannedPosition = gridPosition + inputDirection;
-            targetInteractable = null; // Clear interaction if moving
         }
         else
         {
@@ -66,24 +64,18 @@ public class PlayerGridMovement : MonoBehaviour
             plannedPosition = gridPosition;
         }
 
-        // E to interact with adjacent object - NEW
+        // E to interact instantly - NO TURN COST - NEW
         if (Input.GetKeyDown(KeyCode.E))
         {
-            FindAndPlanInteraction();
+            InteractImmediately();
         }
 
-        // Cancel interaction - NEW
-        if (Input.GetKeyDown(KeyCode.Escape))
-        {
-            targetInteractable = null;
-            Debug.Log("Interaction cancelled");
-        }
     }
 
     // NEW METHOD
-    void FindAndPlanInteraction()
+    // NEW METHOD - Instant interaction
+    void InteractImmediately()
     {
-        // Find interactable objects adjacent to current position
         Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
 
         Interactable closest = null;
@@ -95,7 +87,7 @@ public class PlayerGridMovement : MonoBehaviour
 
             float dist = Vector2Int.Distance(gridPosition, obj.GetGridPosition());
 
-            if (dist <= 1.5f && dist < closestDist) // Adjacent (distance ~1)
+            if (dist <= 1.5f && dist < closestDist)
             {
                 closest = obj;
                 closestDist = dist;
@@ -104,8 +96,8 @@ public class PlayerGridMovement : MonoBehaviour
 
         if (closest != null)
         {
-            targetInteractable = closest;
-            Debug.Log($"Planning to interact with: {closest.GetInteractionPreview()}");
+            Debug.Log($"Instantly interacting with: {closest.GetInteractionPreview()}");
+            closest.Interact(this);
         }
         else
         {
@@ -143,29 +135,6 @@ public class PlayerGridMovement : MonoBehaviour
 
         TurnAction action = new TurnAction();
         action.startPosition = gridPosition;
-
-        // If we have a target interaction, do that instead of moving
-        if (targetInteractable != null && !targetInteractable.IsConsumed())
-        {
-            Debug.Log("Executing interaction");
-
-            action.endPosition = gridPosition; // Don't move
-            action.actionType = ActionType.Interact;
-            action.interactionTarget = targetInteractable.interactableID;
-
-            targetInteractable.Interact(this);
-            targetInteractable = null;
-
-            // Record the action - NEW
-            if (RunRecorder.Instance != null)
-            {
-                RunRecorder.Instance.RecordTurn(action);
-            }
-
-            // Don't move, just complete turn
-            OnMoveComplete();
-            return;
-        }
 
         if (IsValidPosition(plannedPosition))
         {

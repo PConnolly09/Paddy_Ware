@@ -20,27 +20,84 @@ public class EnemyController : MonoBehaviour
     public bool useRandomPatrol = true;
     public int patrolSeed = 0; // Set different seeds for different enemies
 
+    public string enemyID = "enemy_1"; // Set in inspector or generate from position
+    private List<Vector2Int> recordedWaypoints = new List<Vector2Int>();
+    private int recordedWaypointIndex = 0;
+    private bool useRecordedPath = false;
+
     // Facing direction (for vision cone)
     private Vector2Int facingDirection = Vector2Int.up;
 
     void Start()
     {
+
+        Debug.Log($"=== Enemy {enemyID} Start ===");
+
         gridManager = FindAnyObjectByType<GridManager>();
 
+        // Generate unique ID if not set
+        if (string.IsNullOrEmpty(enemyID))
+        {
+            Vector2Int startPos = new Vector2Int(
+                Mathf.RoundToInt(transform.position.x / tileSize),
+                Mathf.RoundToInt(transform.position.y / tileSize)
+            );
+            enemyID = $"enemy_{startPos.x}_{startPos.y}";
+        }
+        Debug.Log($"Enemy ID: {enemyID}");
+
+        // Check if we have a recorded path from previous run
+        if (PathRecorder.Instance != null && PathRecorder.Instance.HasRecordedPath(enemyID))
+        {
+            recordedWaypoints = PathRecorder.Instance.GetRecordedPath(enemyID);
+            useRecordedPath = true;
+            Debug.Log($"Enemy {enemyID} using recorded path with {recordedWaypoints.Count} waypoints");
+        }
+        else
+        {
+            // First run - generate random and record
+            Debug.Log("No recorded path, will generate new one");
+            if (PathRecorder.Instance != null)
+            {
+                PathRecorder.Instance.StartRecording();
+            }
+            GeneratePatrolPath();
+            useRecordedPath = false;
+            Debug.Log($"Enemy {enemyID} generating new random path");
+        }
         // Generate patrol if needed - NEW
         if (useRandomPatrol && (patrolPath == null || patrolPath.Count == 0))
         {
             GeneratePatrolPath();
         }
-        // Start at first waypoint
+
+        Vector2Int initialPos;
+
         if (patrolPath.Count > 0)
         {
-            gridPosition = patrolPath[0];
-            plannedPosition = gridPosition; // ADD THIS LINE
-            transform.position = GridToWorld(gridPosition);
+            initialPos = patrolPath[0];
+        }
+        else
+        {
+            initialPos = new Vector2Int(
+                Mathf.RoundToInt(transform.position.x / tileSize),
+                Mathf.RoundToInt(transform.position.y / tileSize)
+            );
         }
 
+        // Make sure not spawning on player start (0,0)
+        if (Vector2Int.Distance(initialPos, Vector2Int.zero) < 3)
+        {
+            Debug.LogWarning($"Enemy too close to player start, adjusting...");
+            initialPos = new Vector2Int(5, 5); // Safe starting position
+        }
+
+        gridPosition = initialPos;
+        plannedPosition = gridPosition;
+        transform.position = GridToWorld(gridPosition);
+
         targetWorldPosition = transform.position;
+        Debug.Log($"Enemy {enemyID} initialized at {gridPosition}, useRecordedPath={useRecordedPath}");
     }
 
     void Update()
@@ -56,78 +113,120 @@ public class EnemyController : MonoBehaviour
         }
     }
 
-    // NEW METHOD
     void GeneratePatrolPath()
     {
-        // Use seed for deterministic generation
         Random.State oldState = Random.state;
         Random.InitState(patrolSeed);
 
         patrolPath = new List<Vector2Int>();
 
-        // Start from enemy's current grid position
         Vector2Int start = new Vector2Int(
             Mathf.RoundToInt(transform.position.x / tileSize),
             Mathf.RoundToInt(transform.position.y / tileSize)
         );
 
-        // Generate 4-6 waypoints in a rough circle/rectangle
         int waypointCount = Random.Range(4, 7);
         float patrolRadius = Random.Range(2f, 4f);
 
-        for (int i = 0; i < waypointCount; i++)
+        int attempts = 0;
+        while (patrolPath.Count < waypointCount && attempts < 50)
         {
-            float angle = (i / (float)waypointCount) * Mathf.PI * 2;
+            float angle = Random.value * Mathf.PI * 2;
             Vector2Int waypoint = start + new Vector2Int(
                 Mathf.RoundToInt(Mathf.Cos(angle) * patrolRadius),
                 Mathf.RoundToInt(Mathf.Sin(angle) * patrolRadius)
             );
 
-            // Clamp to grid bounds - NEW
-            waypoint.x = Mathf.Clamp(waypoint.x, 0, gridManager.gridWidth - 1);
-            waypoint.y = Mathf.Clamp(waypoint.y, 0, gridManager.gridHeight - 1);
-
-            // Make sure waypoint is valid
-            if (gridManager != null && gridManager.IsWalkable(waypoint))
+            // Clamp to grid bounds
+            if (gridManager != null)
             {
-                patrolPath.Add(waypoint);
+                waypoint.x = Mathf.Clamp(waypoint.x, 0, gridManager.gridWidth - 1);
+                waypoint.y = Mathf.Clamp(waypoint.y, 0, gridManager.gridHeight - 1);
+
+                // Only add if walkable
+                if (gridManager.IsWalkable(waypoint))
+                {
+                    patrolPath.Add(waypoint);
+                }
             }
+
+            attempts++;
         }
 
-        // If no valid waypoints, just stay in place
         if (patrolPath.Count == 0)
         {
             patrolPath.Add(start);
         }
 
-        Random.state = oldState; // Restore random state
+        Random.state = oldState;
 
-        Debug.Log($"Generated patrol with {patrolPath.Count} waypoints for enemy at {start}");
+        Debug.Log($"Generated patrol with {patrolPath.Count} valid waypoints");
     }
 
     void PlanNextMove()
     {
-        if (patrolPath.Count == 0)
+        Debug.Log($"Enemy {enemyID} PlanNextMove - useRecordedPath={useRecordedPath}, at {gridPosition}");
+
+        if (useRecordedPath)
         {
-            plannedPosition = gridPosition; // Stay still if no path
-            return;
+            Debug.Log($"Using recorded path, index {recordedWaypointIndex}/{recordedWaypoints.Count}");
+            // Use recorded path
+            if (recordedWaypointIndex >= recordedWaypoints.Count)
+            {
+                // Finished recorded path, loop it
+                recordedWaypointIndex = 0;
+                Debug.Log("Looping recorded path");
+            }
+
+            Vector2Int targetWaypoint = recordedWaypoints[recordedWaypointIndex];
+            Debug.Log($"Target waypoint: {targetWaypoint}");
+
+            if (gridPosition == targetWaypoint)
+            {
+                recordedWaypointIndex++;
+                Debug.Log($"Reached waypoint, moving to next (index now {recordedWaypointIndex})");
+                if (recordedWaypointIndex < recordedWaypoints.Count)
+                {
+                    targetWaypoint = recordedWaypoints[recordedWaypointIndex];
+                }
+            }
+
+            plannedPosition = MoveToward(gridPosition, targetWaypoint);
+            Debug.Log($"Planned position: {plannedPosition}");
+        }
+        else
+        {
+            // Generate new random path during first run
+            if (patrolPath.Count == 0)
+            {
+                GenerateNewRandomDestination();
+            }
+
+            Vector2Int targetWaypoint = patrolPath[currentWaypointIndex];
+
+            if (gridPosition == targetWaypoint)
+            {
+                // Reached waypoint, record it
+                if (PathRecorder.Instance != null)
+                {
+                    PathRecorder.Instance.RecordWaypoint(enemyID, targetWaypoint);
+                }
+
+                // Generate next destination
+                currentWaypointIndex++;
+                if (currentWaypointIndex >= patrolPath.Count)
+                {
+                    GenerateNewRandomDestination();
+                    currentWaypointIndex = 0;
+                }
+
+                targetWaypoint = patrolPath[currentWaypointIndex];
+            }
+
+            plannedPosition = MoveToward(gridPosition, targetWaypoint);
         }
 
-        // Get next waypoint
-        Vector2Int targetWaypoint = patrolPath[currentWaypointIndex];
-
-        // Are we at the waypoint?
-        if (gridPosition == targetWaypoint)
-        {
-            // Move to next waypoint
-            currentWaypointIndex = (currentWaypointIndex + 1) % patrolPath.Count;
-            targetWaypoint = patrolPath[currentWaypointIndex];
-        }
-
-        // Plan to move one step toward waypoint
-        plannedPosition = MoveToward(gridPosition, targetWaypoint);
-
-        // Update facing direction
+        // Update facing
         Vector2Int moveDirection = plannedPosition - gridPosition;
         if (moveDirection != Vector2Int.zero)
         {
@@ -135,22 +234,71 @@ public class EnemyController : MonoBehaviour
         }
     }
 
+    void GenerateNewRandomDestination()
+    {
+        patrolPath.Clear();
+
+        // Use enemy-specific seed based on how many waypoints we've generated
+        int seed = patrolSeed + recordedWaypoints.Count;
+        Random.State oldState = Random.state;
+        Random.InitState(seed);
+
+        // Pick a random walkable destination
+        if (gridManager != null)
+        {
+            int attempts = 0;
+            while (patrolPath.Count == 0 && attempts < 20)
+            {
+                int x = Random.Range(1, gridManager.gridWidth - 1);
+                int y = Random.Range(1, gridManager.gridHeight - 1);
+                Vector2Int destination = new Vector2Int(x, y);
+
+                if (gridManager.IsWalkable(destination))
+                {
+                    patrolPath.Add(destination);
+                    Debug.Log($"Enemy {enemyID} new destination: {destination}");
+                }
+
+                attempts++;
+            }
+        }
+
+        if (patrolPath.Count == 0)
+        {
+            patrolPath.Add(gridPosition); // Stay in place if can't find destination
+        }
+
+        Random.state = oldState;
+    }
+
     Vector2Int MoveToward(Vector2Int from, Vector2Int to)
     {
-        // Simple pathfinding - move one step closer
         Vector2Int direction = to - from;
+        Vector2Int nextStep;
 
-        // Move horizontally first, then vertically (simple but works)
+        // Try moving horizontally first
         if (direction.x != 0)
         {
-            return from + new Vector2Int((int)Mathf.Sign(direction.x), 0);
-        }
-        else if (direction.y != 0)
-        {
-            return from + new Vector2Int(0, (int)Mathf.Sign(direction.y));
+            nextStep = from + new Vector2Int((int)Mathf.Sign(direction.x), 0);
+            if (gridManager != null && gridManager.IsWalkable(nextStep))
+            {
+                return nextStep;
+            }
         }
 
-        return from; // Already at target
+        // Try moving vertically
+        if (direction.y != 0)
+        {
+            nextStep = from + new Vector2Int(0, (int)Mathf.Sign(direction.y));
+            if (gridManager != null && gridManager.IsWalkable(nextStep))
+            {
+                return nextStep;
+            }
+        }
+
+        // Can't move closer, stay put
+        Debug.Log($"Enemy at {from} blocked, can't reach {to}");
+        return from;
     }
 
     void TriggerGameOver()
@@ -253,42 +401,86 @@ public class EnemyController : MonoBehaviour
         return gridPosition;
     }
 
+    // In EnemyController.cs, update CheckVisionAfterTurn:
     public void CheckVisionAfterTurn()
     {
-        Debug.Log("!!! CheckVisionAfterTurn WAS CALLED !!!");
-
-
-
         PlayerGridMovement player = FindAnyObjectByType<PlayerGridMovement>();
         if (player == null) return;
 
         Vector2Int playerPos = player.GetGridPosition();
 
-        // DEBUG
-        Debug.Log($"Checking vision: Enemy at {gridPosition} facing {facingDirection}, Player at {playerPos}");
-
         float distance = Vector2Int.Distance(gridPosition, playerPos);
-        Debug.Log($"Distance: {distance}, Vision range: {visionRange}");
 
         if (distance > visionRange) return;
+
+        // Check line of sight - NEW
+        if (!HasLineOfSight(playerPos))
+        {
+            Debug.Log("Player blocked by wall, no detection");
+            return;
+        }
 
         Vector2 toPlayer = ((Vector2)(playerPos - gridPosition)).normalized;
         Vector2 facing = new Vector2(facingDirection.x, facingDirection.y).normalized;
 
-        // Handle case where facing is zero
         if (facing.magnitude < 0.01f)
         {
-            facing = Vector2.up; // Default facing if none set
+            facing = Vector2.up;
         }
 
         float angle = Vector2.Angle(facing, toPlayer);
-        Debug.Log($"Angle: {angle}, Max angle: {visionAngle / 2f}");
 
         if (angle <= visionAngle / 2f)
         {
             Debug.Log("PLAYER SPOTTED!");
             TriggerGameOver();
         }
+    }
+
+    // NEW METHOD - Check if path to target is clear
+    bool HasLineOfSight(Vector2Int target)
+    {
+        if (gridManager == null) return false;
+
+        // Bresenham's line algorithm to check each tile between enemy and target
+        int x0 = gridPosition.x;
+        int y0 = gridPosition.y;
+        int x1 = target.x;
+        int y1 = target.y;
+
+        int dx = Mathf.Abs(x1 - x0);
+        int dy = Mathf.Abs(y1 - y0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sy = y0 < y1 ? 1 : -1;
+        int err = dx - dy;
+
+        while (true)
+        {
+            // Check if this tile blocks vision (is a wall)
+            Vector2Int checkPos = new Vector2Int(x0, y0);
+
+            if (!gridManager.IsWalkable(checkPos))
+            {
+                Debug.Log($"Wall at {checkPos} blocks line of sight");
+                return false; // Wall blocks vision
+            }
+
+            if (x0 == x1 && y0 == y1) break;
+
+            int e2 = 2 * err;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                x0 += sx;
+            }
+            if (e2 < dx)
+            {
+                err += dx;
+                y0 += sy;
+            }
+        }
+
+        return true; // Clear line of sight
     }
 
     public bool IsExecuting()

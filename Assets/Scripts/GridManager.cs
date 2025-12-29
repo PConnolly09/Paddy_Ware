@@ -27,6 +27,8 @@ public class GridManager : MonoBehaviour
 
     private HashSet<Vector2Int> wallPositions = new HashSet<Vector2Int>();
 
+    Vector2Int playerStart = Vector2Int.zero;
+
     void Start()
     {
         Random.InitState(randomSeed);
@@ -204,6 +206,10 @@ public class GridManager : MonoBehaviour
                         float dist = Vector2Int.Distance(pos, avoidPosition);
                         if (dist < minDistance) continue;
                     }
+
+                    // Also check distance from player start (0,0)
+                    float distFromPlayer = Vector2Int.Distance(pos, Vector2Int.zero);
+                    if (distFromPlayer < 3) continue; // Keep enemies 3+ tiles from player start
 
                     walkablePositions.Add(pos);
                 }

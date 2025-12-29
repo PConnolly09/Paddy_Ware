@@ -32,15 +32,12 @@ public class GameStateManager : MonoBehaviour
 
     void Start()
     {
-        Debug.Log("=== GameStateManager Start ===");
 
-        if (RunRecorder.Instance == null)
+        // Make sure PathRecorder exists
+        if (PathRecorder.Instance == null)
         {
-            Debug.LogError("RunRecorder.Instance is NULL!");
-        }
-        else
-        {
-            Debug.Log($"RunRecorder found, run count: {RunRecorder.Instance.GetRunCount()}");
+            GameObject pr = new GameObject("PathRecorder");
+            pr.AddComponent<PathRecorder>();
         }
         // Spawn ghosts for previous runs
         SpawnGhosts();
@@ -209,6 +206,11 @@ public class GameStateManager : MonoBehaviour
             Destroy(RunRecorder.Instance.gameObject);
         }
 
+        if (PathRecorder.Instance != null)
+        {
+            Destroy(PathRecorder.Instance.gameObject);
+        }
+
         // Reload scene
         UnityEngine.SceneManagement.SceneManager.LoadScene(
             UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
@@ -226,7 +228,13 @@ public class GameStateManager : MonoBehaviour
     {
         currentPhase = GamePhase.Victory;
 
-        // Complete the run - NEW
+        // Stop path recording - NEW
+        if (PathRecorder.Instance != null)
+        {
+            PathRecorder.Instance.StopRecording();
+        }
+
+        // Complete the run
         if (RunRecorder.Instance != null && TurnCounter.Instance != null)
         {
             RunRecorder.Instance.CompleteRun(TurnCounter.Instance.GetCurrentTurn());
