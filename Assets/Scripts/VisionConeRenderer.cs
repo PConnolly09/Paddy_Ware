@@ -23,6 +23,11 @@ public class VisionConeRenderer : MonoBehaviour
 
     void Update()
     {
+        if (enemy == null)
+        {
+            enemy = GetComponent<EnemyController>();
+        }
+
         if (enemy == null) return;
 
         DrawVisionCone();

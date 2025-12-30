@@ -12,41 +12,27 @@ public abstract class Explosive : Interactable
     {
         Debug.Log($"Explosion at {gridPosition}!");
 
-        // Visual effect
         Vector3 worldPos = new Vector3(gridPosition.x * tileSize, gridPosition.y * tileSize, 0);
         ExplosionEffect.Create(worldPos);
 
-        // Record consumption
-        if (RunRecorder.Instance != null)
+        // Record to Timeline - UPDATED
+        if (TimelineManager.Instance != null)
         {
-            RunRecorder.Instance.RecordResourceConsumption(interactableID);
-            Debug.Log($"Recorded consumption of {interactableID}"); // ADD THIS DEBUG
+            TimelineManager.Instance.RecordResourceConsumption(interactableID);
         }
 
-        else
-        {
-            Debug.LogError("RunRecorder.Instance is NULL!"); // ADD THIS
-        }
-
-        // Damage enemies
+        // Damage enemies...
         EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
-        Debug.Log($"Found {enemies.Length} enemies in scene");
 
         foreach (EnemyController enemy in enemies)
         {
             Vector2Int enemyPos = enemy.GetGridPosition();
             float distance = Vector2Int.Distance(gridPosition, enemyPos);
 
-            Debug.Log($"Enemy at {enemyPos}, distance: {distance}, radius: {explosionRadius}");
-
             if (distance <= explosionRadius)
             {
-                Debug.Log($"Enemy at {enemyPos} killed by explosion!");
+                Debug.Log($"Enemy at {enemyPos} killed!");
                 KillEnemy(enemy);
-            }
-            else
-            {
-                Debug.Log($"Enemy at {enemyPos} outside blast radius");
             }
         }
 

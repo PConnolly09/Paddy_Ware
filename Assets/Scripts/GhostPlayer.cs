@@ -12,6 +12,7 @@ public class GhostPlayer : MonoBehaviour
     private Vector2Int gridPosition;
     private Vector3 targetWorldPosition;
     private bool isExecuting = false;
+    public bool isFrozenTimeline = false; // If true, disappears after reaching last action
 
     void Start()
     {
@@ -43,8 +44,13 @@ public class GhostPlayer : MonoBehaviour
     {
         if (currentTurnIndex >= runData.actions.Count)
         {
-            Debug.Log($"Ghost finished all {runData.actions.Count} actions");
-            return; // Ghost finished its run
+            if (isFrozenTimeline)
+            {
+                // Frozen timeline - hide ghost after last action
+                Debug.Log($"Ghost Timeline {runData.runNumber} reached freeze point, hiding");
+                gameObject.SetActive(false);
+            }
+            return;
         }
 
         TurnAction action = runData.actions[currentTurnIndex];
@@ -96,6 +102,10 @@ public class GhostPlayer : MonoBehaviour
         return isExecuting;
     }
 
+    public bool BlocksMovement()
+    {
+        return true; // Ghosts are solid
+    }
     public Vector2Int GetGridPosition()
     {
         return gridPosition;

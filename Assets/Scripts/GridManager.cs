@@ -16,6 +16,8 @@ public class GridManager : MonoBehaviour
     public int powderKegCount = 1; // RENAMED from barrelCount
     public int remoteBombCount = 0; // NEW
     public int smokeBombCount = 0;
+    public GameObject enemyPrefab; // Assign in inspector
+    public int enemyCount = 1;
 
     [Header("Prefabs")]
     public GameObject floorTilePrefab;
@@ -24,6 +26,9 @@ public class GridManager : MonoBehaviour
     public GameObject remoteBombPrefab; // NEW
     public GameObject smokeBombPrefab;
     public GameObject exitPrefab;
+    public GameObject pressurePlatePrefab;
+    public GameObject lockedDoorPrefab;
+    public bool usePressurePlates = false; // Enable for puzzle levels
 
     private HashSet<Vector2Int> wallPositions = new HashSet<Vector2Int>();
 
@@ -35,6 +40,12 @@ public class GridManager : MonoBehaviour
 
         SetupWalls();
         GenerateGrid();
+
+        // Spawn enemies - NEW
+        for (int i = 0; i < enemyCount; i++)
+        {
+            SpawnEnemy(i);
+        }
 
         // Spawn everything FIRST
         for (int i = 0; i < powderKegCount; i++)
@@ -50,6 +61,11 @@ public class GridManager : MonoBehaviour
         for (int i = 0; i < smokeBombCount; i++)
         {
             SpawnSmokeBomb(i);
+        }
+
+        if (usePressurePlates)
+        {
+            SpawnPressurePlatePuzzle();
         }
 
         SpawnExit();
@@ -90,6 +106,117 @@ public class GridManager : MonoBehaviour
         }
     }
 
+    void SpawnEnemy(int index)
+    {
+        if (enemyPrefab == null)
+        {
+            Debug.LogWarning("Enemy prefab not assigned!");
+            return;
+        }
+
+        // Find position at least 5 tiles from player start (0,0)
+        Vector2Int enemyPos = Vector2Int.zero;
+        int attempts = 0;
+
+        while (attempts < 100)
+        {
+            int x = Random.Range(2, gridWidth - 2);
+            int y = Random.Range(2, gridHeight - 2);
+            enemyPos = new Vector2Int(x, y);
+
+            // Check distance from player
+            float distFromPlayer = Vector2Int.Distance(enemyPos, Vector2Int.zero);
+
+            // Check if walkable and far enough
+            if (IsWalkable(enemyPos) && distFromPlayer >= 5f)
+            {
+                break;
+            }
+
+            attempts++;
+        }
+
+        if (attempts >= 100)
+        {
+            Debug.LogError("Couldn't find valid enemy spawn position!");
+            enemyPos = new Vector2Int(5, 5); // Fallback
+        }
+
+        GameObject enemy = Instantiate(enemyPrefab);
+        enemy.transform.position = new Vector3(enemyPos.x * tileSize, enemyPos.y * tileSize, 0);
+
+        EnemyController enemyController = enemy.GetComponent<EnemyController>();
+        if (enemyController != null)
+        {
+            enemyController.enemyID = $"enemy_{index}";
+            enemyController.patrolSeed = randomSeed + index;
+        }
+
+        Debug.Log($"Spawned enemy {index} at {enemyPos}, distance from player: {Vector2Int.Distance(enemyPos, Vector2Int.zero)}");
+    }
+
+    void SpawnPressurePlatePuzzle()
+    {
+        if (pressurePlatePrefab == null || lockedDoorPrefab == null)
+        {
+            Debug.LogWarning("Pressure plate prefabs not assigned!");
+            return;
+        }
+
+        // Find positions for 2 plates and 1 door
+        Vector2Int plate1Pos = GetRandomWalkablePosition(Vector2Int.zero, 3);
+        Vector2Int plate2Pos = GetRandomWalkablePosition(plate1Pos, 3);
+
+        // Door should be between plates and exit
+        Vector2Int doorPos = new Vector2Int(
+            (plate1Pos.x + plate2Pos.x) / 2,
+            (plate1Pos.y + plate2Pos.y) / 2
+        );
+
+        // Make sure door position is valid (adjust if needed)
+        if (!IsWalkable(doorPos))
+        {
+            doorPos = GetRandomWalkablePosition(plate1Pos, 2);
+        }
+
+        // Spawn plates
+        GameObject plate1Obj = Instantiate(pressurePlatePrefab);
+        PressurePlate plate1 = plate1Obj.GetComponent<PressurePlate>();
+        plate1.gridPosition = plate1Pos;
+        plate1Obj.transform.position = new Vector3(plate1Pos.x * tileSize, plate1Pos.y * tileSize, 0);
+
+        GameObject plate2Obj = Instantiate(pressurePlatePrefab);
+        PressurePlate plate2 = plate2Obj.GetComponent<PressurePlate>();
+        plate2.gridPosition = plate2Pos;
+        plate2Obj.transform.position = new Vector3(plate2Pos.x * tileSize, plate2Pos.y * tileSize, 0);
+
+        // Link plates
+        plate1.pairedPlate = plate2;
+        plate2.pairedPlate = plate1;
+
+        // Spawn door
+        GameObject doorObj = Instantiate(lockedDoorPrefab);
+        LockedDoor door = doorObj.GetComponent<LockedDoor>();
+        door.gridPosition = doorPos;
+        door.plateA = plate1;
+        door.plateB = plate2;
+        doorObj.transform.position = new Vector3(doorPos.x * tileSize, doorPos.y * tileSize, 0);
+
+        // Add door to wall list so it blocks movement initially
+        wallPositions.Add(doorPos);
+
+        Debug.Log($"Spawned pressure plate puzzle: Plate1={plate1Pos}, Plate2={plate2Pos}, Door={doorPos}");
+    }
+
+    // Add method for door to call when opening:
+    public void MakeWalkable(Vector2Int position)
+    {
+        if (wallPositions.Contains(position))
+        {
+            wallPositions.Remove(position);
+            Debug.Log($"Position {position} is now walkable");
+        }
+    }
     // NEW METHOD
     void SpawnPowderKeg(int index)
     {

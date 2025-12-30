@@ -13,6 +13,7 @@ public class PlayerGridMovement : MonoBehaviour
     private Vector3 targetWorldPosition;
     private bool isExecuting = false; // NEW - are we animating?
     private GameObject currentHighlight;
+    private Interactable targetInteractable = null;
 
 
     void Start()
@@ -105,6 +106,14 @@ public class PlayerGridMovement : MonoBehaviour
         }
     }
 
+    public void SetPosition(Vector2Int pos)
+    {
+        gridPosition = pos;
+        plannedPosition = pos;
+        transform.position = GridToWorld(pos);
+        targetWorldPosition = transform.position;
+        Debug.Log($"Player position set to {pos}");
+    }
     void UpdateHighlight()
     {
         if (currentHighlight == null) return;
@@ -132,13 +141,33 @@ public class PlayerGridMovement : MonoBehaviour
     // Called by GameStateManager when SPACE is pressed
     public void ExecutePlannedMove()
     {
-
         TurnAction action = new TurnAction();
         action.startPosition = gridPosition;
+        action.turnNumber = TurnCounter.Instance != null ? TurnCounter.Instance.GetCurrentTurn() : 0;
 
+        // Handle interaction
+        if (targetInteractable != null && !targetInteractable.IsConsumed())
+        {
+            action.endPosition = gridPosition;
+            action.actionType = ActionType.Interact;
+            action.interactionTarget = targetInteractable.interactableID;
+
+            targetInteractable.Interact(this);
+            targetInteractable = null;
+
+            // Record to Timeline - UPDATED
+            if (TimelineManager.Instance != null)
+            {
+                TimelineManager.Instance.RecordPlayerAction(action);
+            }
+
+            OnMoveComplete();
+            return;
+        }
+
+        // Handle movement
         if (IsValidPosition(plannedPosition))
         {
-            // Valid move - execute it
             gridPosition = plannedPosition;
             targetWorldPosition = GridToWorld(gridPosition);
             isExecuting = true;
@@ -146,12 +175,12 @@ public class PlayerGridMovement : MonoBehaviour
             action.endPosition = plannedPosition;
             action.actionType = ActionType.Move;
 
-            if (RunRecorder.Instance != null)
+            // Record to Timeline - UPDATED
+            if (TimelineManager.Instance != null)
             {
-                RunRecorder.Instance.RecordTurn(action);
+                TimelineManager.Instance.RecordPlayerAction(action);
             }
 
-            // Hide highlight during execution
             if (currentHighlight != null)
             {
                 currentHighlight.SetActive(false);
@@ -159,20 +188,27 @@ public class PlayerGridMovement : MonoBehaviour
         }
         else
         {
-            // Invalid move - just stay in place
-            Debug.Log("Invalid move, staying in place");
-
             action.endPosition = gridPosition;
             action.actionType = ActionType.Wait;
 
-            // Record the action - NEW
-            if (RunRecorder.Instance != null)
+            // Record to Timeline - UPDATED
+            if (TimelineManager.Instance != null)
             {
-                RunRecorder.Instance.RecordTurn(action);
+                TimelineManager.Instance.RecordPlayerAction(action);
             }
 
             OnMoveComplete();
         }
+    }
+
+    public void RestoreFromTimeline(Vector2Int position, int turn)
+    {
+        gridPosition = position;
+        plannedPosition = position;
+        transform.position = GridToWorld(position);
+        targetWorldPosition = transform.position;
+
+        Debug.Log($"Player restored to {position} at turn {turn}");
     }
 
     void ExecuteMovement()

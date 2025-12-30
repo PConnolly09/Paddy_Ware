@@ -58,64 +58,85 @@ public class GhostPreview : MonoBehaviour
         }
     }
 
+    // Replace GhostPreview.cs ShowGhostPreviews() entirely:
     void ShowGhostPreviews()
     {
-        // FORCE cleanup first
         HideGhostPreviews();
 
-        if (RunRecorder.Instance == null || TurnCounter.Instance == null)
+        if (TimelineManager.Instance == null || TurnCounter.Instance == null)
         {
-            Debug.Log("Can't show preview - missing managers");
+            Debug.LogWarning("Can't show preview - missing TimelineManager or TurnCounter");
+            showingPreview = false;
+            return;
+        }
+
+        TimelineManager.TimelineState activeTimeline = TimelineManager.Instance.GetActiveTimeline();
+        if (activeTimeline == null)
+        {
+            Debug.LogWarning("No active timeline");
             showingPreview = false;
             return;
         }
 
         int currentTurn = TurnCounter.Instance.GetCurrentTurn();
-        int runCount = RunRecorder.Instance.GetRunCount();
 
-        if (runCount == 0)
+        // Get all OTHER timelines to preview
+        List<TimelineManager.TimelineState> otherTimelines = new List<TimelineManager.TimelineState>();
+        foreach (var timeline in TimelineManager.Instance.GetAllTimelines())
         {
-            Debug.Log("No previous runs to preview");
+            if (timeline.timelineID != activeTimeline.timelineID && timeline.playerActions.Count > 0)
+            {
+                otherTimelines.Add(timeline);
+            }
+        }
+
+        if (otherTimelines.Count == 0)
+        {
+            Debug.Log("No other timelines to preview");
             showingPreview = false;
             return;
         }
 
-        Debug.Log($"Showing {turnsToPreview} turns ahead from turn {currentTurn}");
+        Debug.Log($"Previewing {otherTimelines.Count} other timelines from turn {currentTurn}");
 
-        // Color per run
         Color[] runColors = new Color[] {
-            new Color(1f, 0.5f, 0.5f, 0.4f), // Red tint
-            new Color(0.5f, 0.5f, 1f, 0.4f), // Blue tint
-            new Color(0.5f, 1f, 0.5f, 0.4f), // Green tint
-            new Color(1f, 1f, 0.5f, 0.4f), // Yellow tint
-        };
+        new Color(1f, 0.5f, 0.5f, 0.4f),
+        new Color(0.5f, 0.5f, 1f, 0.4f),
+        new Color(0.5f, 1f, 0.5f, 0.4f),
+        new Color(1f, 1f, 0.5f, 0.4f),
+    };
 
-        for (int runNum = 1; runNum <= runCount; runNum++)
+        int colorIndex = 0;
+        foreach (var timeline in otherTimelines)
         {
-            RunData run = RunRecorder.Instance.GetRun(runNum);
-            if (run == null || !run.completed) continue;
-
-            Color runColor = runColors[(runNum - 1) % runColors.Length];
-            CreatePreviewForRun(run, currentTurn, runNum, runColor);
+            Color runColor = runColors[colorIndex % runColors.Length];
+            CreatePreviewForTimeline(timeline, currentTurn, runColor);
+            colorIndex++;
         }
 
         Debug.Log($"Created {previewObjects.Count} preview objects");
     }
 
-    void CreatePreviewForRun(RunData run, int currentTurn, int runNum, Color baseColor)
+    void CreatePreviewForTimeline(TimelineManager.TimelineState timeline, int currentTurn, Color baseColor)
     {
-        for (int turnOffset = 0; turnOffset < turnsToPreview; turnOffset++)
+        // Show next N actions from this timeline
+        for (int i = 0; i < turnsToPreview; i++)
         {
-            int futureTurn = currentTurn + turnOffset;
+            int actionIndex = currentTurn + i;
 
-            if (futureTurn >= run.actions.Count) break;
+            if (actionIndex >= timeline.playerActions.Count)
+            {
+                // This timeline doesn't have actions this far ahead
+                break;
+            }
 
-            TurnAction action = run.actions[futureTurn];
+            TurnAction action = timeline.playerActions[actionIndex];
             Vector2Int position = action.endPosition;
 
-            CreatePreviewSprite(position, turnOffset, runNum, baseColor);
+            CreatePreviewSprite(position, i, timeline.timelineID, baseColor);
         }
     }
+
 
     void CreatePreviewSprite(Vector2Int position, int turnOffset, int runNum, Color baseColor)
     {

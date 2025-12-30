@@ -20,6 +20,12 @@ public class TurnCounter : MonoBehaviour
 
     }
 
+    public void SetTurn(int turn)
+    {
+        currentTurn = turn;
+        Debug.Log($"Turn set to {currentTurn}");
+    }
+
     void OnGUI()
     {
         // Draw turn counter in top-left corner

@@ -8,7 +8,9 @@ public enum GamePhase
     Executing,   // Turn is executing (animations play)
     Complete,     // Turn done, ready for next
     GameOver,    // NEW: Game over state
-    Victory
+    Victory,
+    TimelineMenu,
+    TimelineComplete
 }
 
 public class GameStateManager : MonoBehaviour
@@ -33,20 +35,17 @@ public class GameStateManager : MonoBehaviour
     void Start()
     {
 
-        // Make sure PathRecorder exists
-        if (PathRecorder.Instance == null)
+        if (TimelineManager.Instance == null)
         {
-            GameObject pr = new GameObject("PathRecorder");
-            pr.AddComponent<PathRecorder>();
+            GameObject tm = new GameObject("TimelineManager");
+            tm.AddComponent<TimelineManager>();
         }
-        // Spawn ghosts for previous runs
-        SpawnGhosts();
+        // Spawn ghosts from OTHER timelines
+        SpawnGhostsFromOtherTimelines();
 
-        // Start first run
-        if (RunRecorder.Instance != null)
-        {
-            RunRecorder.Instance.StartNewRun();
-        }
+        // Restore active timeline state
+        RestoreActiveTimelineState();
+
         // Disable consumed resources
         DisableConsumedResources();
     }
@@ -54,33 +53,74 @@ public class GameStateManager : MonoBehaviour
 
     void Update()
     {
+        // Update game over to use this:
         if (currentPhase == GamePhase.GameOver)
         {
-            // Only allow restart
             if (Input.GetKeyDown(KeyCode.R))
             {
-                RestartLevel();
+                RestartCurrentTimeline();
             }
-            return; // Don't process any other input
+            else if (Input.GetKeyDown(KeyCode.T))
+            {
+                if (TimelineManager.Instance != null)
+                {
+                    TimelineManager.Instance.ShowTimelineSwitchMenu();
+                }
+            }
+            return;
         }
 
         if (currentPhase == GamePhase.Victory)
         {
-            if (canProgressToNextLevel && Input.GetKeyDown(KeyCode.L))
+            if (Input.GetKeyDown(KeyCode.T))
             {
-                if (LevelManager.Instance != null)
+                // Switch timelines from victory screen
+                if (TimelineManager.Instance != null)
                 {
-                    LevelManager.Instance.CompleteLevel();
+                    TimelineManager.Instance.ShowTimelineSwitchMenu();
+                }
+            }
+            else if (Input.GetKeyDown(KeyCode.L))
+            {
+                // Check if all timelines complete
+                bool allComplete = true;
+                if (TimelineManager.Instance != null)
+                {
+                    foreach (var timeline in TimelineManager.Instance.GetAllTimelines())
+                    {
+                        if (!timeline.isComplete)
+                        {
+                            allComplete = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (allComplete)
+                {
+                    LoadNextLevel();
                 }
             }
             else if (Input.GetKeyDown(KeyCode.N))
             {
-                StartNextRun();
+                if (TimelineManager.Instance != null)
+                {
+                    TimelineManager.Instance.CreateNewTimeline();
+                }
+
+                UnityEngine.SceneManagement.SceneManager.LoadScene(
+                    UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+                );
             }
             else if (Input.GetKeyDown(KeyCode.R))
             {
                 RestartFromBeginning();
             }
+            return;
+        }
+        if (currentPhase == GamePhase.TimelineMenu)
+        {
+            HandleTimelineMenuInput();
             return;
         }
         // Only allow input if not game over - UPDATED
@@ -89,9 +129,22 @@ public class GameStateManager : MonoBehaviour
             CommitTurn();
         }
 
+        if (currentPhase == GamePhase.Planning && Input.GetKeyDown(KeyCode.N))
+        {
+            if (TimelineManager.Instance != null)
+            {
+                TimelineManager.Instance.FreezeTimeline();
+                TimelineManager.Instance.CreateNewTimeline();
+
+                UnityEngine.SceneManagement.SceneManager.LoadScene(
+                    UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+                );
+            }
+        }
+
         if (Input.GetKeyDown(KeyCode.R))
         {
-            RestartLevel();
+            RestartCurrentTimeline();
         }
 
         if (currentPhase == GamePhase.Complete)
@@ -99,88 +152,101 @@ public class GameStateManager : MonoBehaviour
             currentPhase = GamePhase.Planning;
         }
 
+        // Update to handle TimelineComplete in Update():
+        if (currentPhase == GamePhase.TimelineComplete)
+        {
+            if (Input.GetKeyDown(KeyCode.T))
+            {
+                // Switch to another timeline
+                if (TimelineManager.Instance != null)
+                {
+                    TimelineManager.Instance.ShowTimelineSwitchMenu();
+                }
+            }
+            else if (Input.GetKeyDown(KeyCode.N))
+            {
+                // Create new timeline
+                if (TimelineManager.Instance != null)
+                {
+                    TimelineManager.Instance.CreateNewTimeline();
+                    RestartFromBeginning(); // Reload with new timeline
+                }
+            }
+            return;
+        }
+
         // Don't allow planning if game over
     }
 
-    void SpawnGhosts()
+
+    void SpawnGhostsFromOtherTimelines()
     {
-        Debug.Log("=== SpawnGhosts called ===");
+        if (TimelineManager.Instance == null || ghostPrefab == null) return;
 
-        if (RunRecorder.Instance == null)
+        int activeID = TimelineManager.Instance.activeTimelineID;
+
+        foreach (var timeline in TimelineManager.Instance.GetAllTimelines())
         {
-            Debug.LogError("RunRecorder.Instance is NULL in SpawnGhosts");
-            return;
-        }
+            // Don't spawn ghost for active timeline
+            if (timeline.timelineID == activeID) continue;
 
-        int runCount = RunRecorder.Instance.GetRunCount();
-        Debug.Log($"Run count: {runCount}");
+            // Only spawn if timeline has actions
+            if (timeline.playerActions.Count == 0) continue;
 
-        if (runCount == 0)
-        {
-            Debug.Log("First run, no ghosts to spawn");
-            return;
-        }
+            Debug.Log($"Spawning ghost for Timeline {timeline.timelineID} with {timeline.playerActions.Count} actions");
 
-        Debug.Log($"Spawning {runCount} ghosts from previous runs");
+            GameObject ghostObj = Instantiate(ghostPrefab);
+            GhostPlayer ghost = ghostObj.GetComponent<GhostPlayer>();
 
-        for (int i = 1; i <= runCount; i++)
-        {
-            RunData run = RunRecorder.Instance.GetRun(i);
-
-            if (run == null)
+            if (ghost != null)
             {
-                Debug.LogError($"Run {i} is NULL!");
-                continue;
-            }
+                // Create RunData from timeline
+                RunData runData = new RunData();
+                runData.runNumber = timeline.timelineID;
+                runData.actions = new List<TurnAction>(timeline.playerActions);
+                runData.completed = timeline.isComplete;
+                runData.turnCount = timeline.currentTurn;
 
-            Debug.Log($"Run {i}: completed={run.completed}, actions={run.actions.Count}");
-
-            if (run.completed)
-            {
-                SpawnGhost(run);
-            }
-            else
-            {
-                Debug.LogWarning($"Run {i} not completed, skipping ghost spawn");
+                ghost.runData = runData;
+                ghost.isFrozenTimeline = timeline.isFrozen; // NEW field needed in GhostPlayer
+                activeGhosts.Add(ghost);
             }
         }
     }
 
-    void SpawnGhost(RunData runData)
+    void RestoreActiveTimelineState()
     {
-        Debug.Log($"=== SpawnGhost for Run #{runData.runNumber} ===");
+        if (TimelineManager.Instance == null) return;
 
-        if (ghostPrefab == null)
+        TimelineManager.TimelineState active = TimelineManager.Instance.GetActiveTimeline();
+        if (active == null) return;
+
+        // Only restore if there's actual progress to restore
+        if (active.currentTurn == 0)
         {
-            Debug.LogError("ghostPrefab is NULL! Assign it in GameStateManager inspector!");
+            Debug.Log("Timeline at turn 0, starting fresh");
             return;
         }
 
-        Debug.Log("Instantiating ghost prefab...");
-        GameObject ghostObj = Instantiate(ghostPrefab);
+        Debug.Log($"Restoring Timeline {active.timelineID} to turn {active.currentTurn}");
 
-        Debug.Log("Getting GhostPlayer component...");
-        GhostPlayer ghost = ghostObj.GetComponent<GhostPlayer>();
-
-        if (ghost == null)
+        if (TurnCounter.Instance != null)
         {
-            Debug.LogError("Ghost prefab doesn't have GhostPlayer component!");
-            Destroy(ghostObj);
-            return;
+            TurnCounter.Instance.SetTurn(active.currentTurn);
         }
 
-        Debug.Log("Setting ghost runData...");
-        ghost.runData = runData;
-        activeGhosts.Add(ghost);
-
-        Debug.Log($"Successfully spawned ghost for Run #{runData.runNumber}");
+        PlayerGridMovement player = FindAnyObjectByType<PlayerGridMovement>();
+        if (player != null)
+        {
+            player.RestoreFromTimeline(active.playerPosition, active.currentTurn);
+        }
     }
 
     void DisableConsumedResources()
     {
-        if (RunRecorder.Instance == null) return;
+        if (TimelineManager.Instance == null) return;
 
-        List<string> consumedIDs = RunRecorder.Instance.GetAllConsumedResources();
+        List<string> consumedIDs = TimelineManager.Instance.GetAllConsumedResources();
 
         Debug.Log($"Disabling {consumedIDs.Count} consumed resources");
 
@@ -190,25 +256,40 @@ public class GameStateManager : MonoBehaviour
         {
             if (consumedIDs.Contains(obj.interactableID))
             {
-                Debug.Log($"Resource {obj.interactableID} already consumed, disabling");
-                obj.Consume(); // Hide it
+                Debug.Log($"Consuming {obj.interactableID}");
+                obj.Consume();
             }
         }
     }
 
+    void LoadNextLevel()
+{
+    int currentSceneIndex = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex;
+    int nextSceneIndex = currentSceneIndex + 1;
+    
+    // Clear timelines when changing levels
+    if (TimelineManager.Instance != null)
+    {
+        Destroy(TimelineManager.Instance.gameObject);
+    }
+    
+    if (nextSceneIndex < UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings)
+    {
+        UnityEngine.SceneManagement.SceneManager.LoadScene(nextSceneIndex);
+    }
+    else
+    {
+        Debug.Log("No more levels!");
+    }
+}
     void RestartFromBeginning()
     {
         Debug.Log("Restarting from beginning...");
 
-        // Clear all runs
-        if (RunRecorder.Instance != null)
+        // Clear TimelineManager
+        if (TimelineManager.Instance != null)
         {
-            Destroy(RunRecorder.Instance.gameObject);
-        }
-
-        if (PathRecorder.Instance != null)
-        {
-            Destroy(PathRecorder.Instance.gameObject);
+            Destroy(TimelineManager.Instance.gameObject);
         }
 
         // Reload scene
@@ -217,39 +298,59 @@ public class GameStateManager : MonoBehaviour
         );
     }
 
-    void RestartLevel()
+    public void SetWin()
     {
+        if (TimelineManager.Instance != null)
+        {
+            TimelineManager.Instance.CompleteTimeline();
+        }
+
+        currentPhase = GamePhase.Victory;
+    }
+
+    void RestartCurrentTimeline()
+    {
+        Debug.Log("Restarting current timeline...");
+
+        if (TimelineManager.Instance != null)
+        {
+            TimelineManager.TimelineState active = TimelineManager.Instance.GetActiveTimeline();
+
+            if (active != null)
+            {
+                // Clear this timeline's data only
+                active.currentTurn = 0;
+                active.playerPosition = Vector2Int.zero;
+                active.playerActions.Clear();
+                active.consumedResources.Clear();
+                active.isFrozen = false;
+                active.isComplete = false;
+                // Keep enemy paths - they're deterministic anyway
+
+                Debug.Log($"Timeline {active.timelineID} data cleared");
+            }
+        }
+
+        // Reload scene
         UnityEngine.SceneManagement.SceneManager.LoadScene(
             UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
         );
     }
-
-    public void SetWin()
+    void SaveCurrentTimelineState()
     {
-        currentPhase = GamePhase.Victory;
+        if (TimelineManager.Instance == null) return;
 
-        // Stop path recording - NEW
-        if (PathRecorder.Instance != null)
-        {
-            PathRecorder.Instance.StopRecording();
-        }
+        PlayerGridMovement player = FindAnyObjectByType<PlayerGridMovement>();
+        if (player == null) return;
 
-        // Complete the run
-        if (RunRecorder.Instance != null && TurnCounter.Instance != null)
-        {
-            RunRecorder.Instance.CompleteRun(TurnCounter.Instance.GetCurrentTurn());
-        }
-        // Check if level has win condition (need X runs to unlock next level?) - NEW
-        int runCount = RunRecorder.Instance != null ? RunRecorder.Instance.GetRunCount() : 0;
+        TimelineManager.Instance.SaveTimelineState(
+            player.GetGridPosition(),
+            TurnCounter.Instance != null ? TurnCounter.Instance.GetCurrentTurn() : 0
+        );
 
-        // Simple: complete 3 runs to unlock next level
-        if (runCount >= 3)
-        {
-            Debug.Log("Level requirements met! Can progress to next level");
-            canProgressToNextLevel = true;
-        }
-        Debug.Log("VICTORY! - Press N for next run or R to restart");
+        Debug.Log("Current timeline state saved");
     }
+
     void CommitTurn()
     {
         Debug.Log("Turn committed!");
@@ -279,6 +380,31 @@ public class GameStateManager : MonoBehaviour
         StartCoroutine(WaitForAllExecutions());
     }
 
+    void HandleTimelineMenuInput()
+    {
+        // ESC to close menu
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            currentPhase = GamePhase.Planning;
+            Time.timeScale = 1;
+        }
+
+        // Number keys to switch timelines
+        if (TimelineManager.Instance != null)
+        {
+            for (int i = 1; i <= 9; i++)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha0 + i))
+                {
+                    if (TimelineManager.Instance.timelines.ContainsKey(i))
+                    {
+                        Time.timeScale = 1;
+                        TimelineManager.Instance.SwitchToTimeline(i);
+                    }
+                }
+            }
+        }
+    }
     // NEW METHOD
     System.Collections.IEnumerator WaitForAllExecutions()
     {
@@ -381,12 +507,10 @@ public class GameStateManager : MonoBehaviour
     {
         Debug.Log("Starting next run...");
 
-        // Reload scene but keep RunRecorder
         UnityEngine.SceneManagement.SceneManager.LoadScene(
             UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
         );
 
-        // RunRecorder persists (DontDestroyOnLoad), will start new run on scene load
     }
 
     void OnGUI()
@@ -412,8 +536,135 @@ public class GameStateManager : MonoBehaviour
         {
             DrawPlanningHints();
         }
+
+        // Timeline menu
+        if (currentPhase == GamePhase.TimelineMenu)
+        {
+            DrawTimelineMenu();
+        }
+
+        if (currentPhase == GamePhase.TimelineComplete)
+        {
+            DrawTimelineCompleteScreen();
+        }
     }
 
+    void DrawTimelineCompleteScreen()
+    {
+        GUI.color = new Color(0, 0, 0, 0.85f);
+        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+        GUI.color = Color.white;
+
+        GUIStyle bigStyle = new GUIStyle();
+        bigStyle.fontSize = 48;
+        bigStyle.normal.textColor = Color.cyan;
+        bigStyle.alignment = TextAnchor.MiddleCenter;
+
+        GUI.Label(new Rect(0, Screen.height / 2 - 80, Screen.width, 60),
+            "TIMELINE COMPLETE!", bigStyle);
+
+        GUIStyle textStyle = new GUIStyle();
+        textStyle.fontSize = 24;
+        textStyle.normal.textColor = Color.white;
+        textStyle.alignment = TextAnchor.MiddleCenter;
+
+        int timelineID = TimelineManager.Instance != null ? TimelineManager.Instance.activeTimelineID : 0;
+        int incomplete = 0;
+        if (TimelineManager.Instance != null)
+        {
+            incomplete = TimelineManager.Instance.GetIncompleteTimelineIDs().Count;
+        }
+
+        GUI.Label(new Rect(0, Screen.height / 2 - 10, Screen.width, 30),
+            $"Timeline {timelineID} solved!", textStyle);
+
+        GUI.Label(new Rect(0, Screen.height / 2 + 30, Screen.width, 30),
+            $"{incomplete} timeline(s) remaining", textStyle);
+
+        GUI.Label(new Rect(0, Screen.height / 2 + 70, Screen.width, 60),
+            "[T] Switch Timeline  |  [N] New Timeline", textStyle);
+    }
+    public void SaveTimelineState(Vector2Int playerPos, int turn)
+    {
+        TimelineManager.TimelineState timeline;
+        timeline = TimelineManager.Instance.GetActiveTimeline();
+        if (timeline != null)
+        {
+            timeline.playerPosition = playerPos;
+            timeline.currentTurn = turn;
+        }
+    }                 
+    void DrawTimelineMenu()
+    {
+        GUI.color = new Color(0, 0, 0, 0.9f);
+        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+        GUI.color = Color.white;
+
+        GUIStyle titleStyle = new GUIStyle();
+        titleStyle.fontSize = 36;
+        titleStyle.normal.textColor = Color.cyan;
+        titleStyle.alignment = TextAnchor.MiddleCenter;
+
+        GUI.Label(new Rect(0, 80, Screen.width, 50), "TIMELINE SELECTION", titleStyle);
+
+        GUIStyle textStyle = new GUIStyle();
+        textStyle.fontSize = 22;
+        textStyle.alignment = TextAnchor.MiddleLeft;
+
+        if (TimelineManager.Instance != null)
+        {
+            int y = 160;
+            int currentID = TimelineManager.Instance.activeTimelineID;
+
+            foreach (var kvp in TimelineManager.Instance.timelines)
+            {
+                int id = kvp.Key;
+                TimelineManager.TimelineState timeline = kvp.Value; //may not work?
+
+                // Box background
+                if (id == currentID)
+                {
+                    GUI.color = new Color(1, 1, 0, 0.3f);
+                    GUI.DrawTexture(new Rect(50, y - 5, Screen.width - 100, 70), Texture2D.whiteTexture);
+                    GUI.color = Color.white;
+                }
+
+                // Timeline info
+                Color color = timeline.isComplete ? Color.green : Color.white;
+                if (id == currentID) color = Color.yellow;
+
+                textStyle.normal.textColor = color;
+
+                string status = timeline.isComplete ? "COMPLETE" : $"In Progress (Turn {timeline.currentTurn})";
+                string marker = id == currentID ? ">" : "  ";
+
+                GUI.Label(new Rect(70, y, 200, 30), $"{marker}[{id}] Timeline {id}", textStyle);
+
+                textStyle.fontSize = 18;
+                textStyle.normal.textColor = Color.gray;
+                GUI.Label(new Rect(70, y + 30, Screen.width - 140, 30), status, textStyle);
+                textStyle.fontSize = 22;
+
+                y += 80;
+            }
+
+            // Instructions
+            textStyle.normal.textColor = Color.white;
+            textStyle.alignment = TextAnchor.MiddleCenter;
+            textStyle.fontSize = 20;
+
+            GUI.Label(new Rect(0, Screen.height - 120, Screen.width, 30),
+                "Press number key [1-9] to switch to that timeline", textStyle);
+
+            textStyle.normal.textColor = Color.cyan;
+            GUI.Label(new Rect(0, Screen.height - 90, Screen.width, 30),
+                "[N] Create New Timeline (save current progress)", textStyle);
+
+            textStyle.normal.textColor = Color.gray;
+            GUI.Label(new Rect(0, Screen.height - 60, Screen.width, 30),
+                "[ESC] Close Menu", textStyle);
+        }
+    }
     void DrawPhaseIndicator()
     {
         GUIStyle style = new GUIStyle();
@@ -477,75 +728,94 @@ public class GameStateManager : MonoBehaviour
 
     void DrawGameOverScreen()
     {
-        // Dark overlay
         GUI.color = new Color(0, 0, 0, 0.8f);
         GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
         GUI.color = Color.white;
 
-        // Big red text
         GUIStyle bigStyle = new GUIStyle();
         bigStyle.fontSize = 48;
         bigStyle.normal.textColor = Color.red;
         bigStyle.alignment = TextAnchor.MiddleCenter;
 
-        GUI.Label(new Rect(0, Screen.height / 2 - 50, Screen.width, 100), "GAME OVER", bigStyle);
+        GUI.Label(new Rect(0, Screen.height / 2 - 50, Screen.width, 100), "DETECTED", bigStyle);
 
-        // Restart instruction
         GUIStyle smallStyle = new GUIStyle();
         smallStyle.fontSize = 24;
         smallStyle.normal.textColor = Color.white;
         smallStyle.alignment = TextAnchor.MiddleCenter;
 
-        GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 50), "Press R to Restart", smallStyle);
+        int timelineID = TimelineManager.Instance != null ? TimelineManager.Instance.activeTimelineID : 0;
+
+        GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 50),
+            $"Timeline {timelineID}\n[R] Restart Timeline  |  [T] Switch Timeline", smallStyle);
     }
 
     void DrawVictoryScreen()
     {
-        // Dark overlay
-        GUI.color = new Color(0, 0, 0, 0.8f);
+        GUI.color = new Color(0, 0, 0, 0.85f);
         GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
         GUI.color = Color.white;
 
-        // Big green text
         GUIStyle bigStyle = new GUIStyle();
         bigStyle.fontSize = 48;
         bigStyle.normal.textColor = Color.green;
         bigStyle.alignment = TextAnchor.MiddleCenter;
 
-        GUI.Label(new Rect(0, Screen.height / 2 - 80, Screen.width, 100), "VICTORY!", bigStyle);
+        GUI.Label(new Rect(0, Screen.height / 2 - 100, Screen.width, 60), "TIMELINE COMPLETE!", bigStyle);
 
-        // Stats and options
-        GUIStyle smallStyle = new GUIStyle();
-        smallStyle.fontSize = 20;
-        smallStyle.normal.textColor = Color.white;
-        smallStyle.alignment = TextAnchor.MiddleCenter;
+        GUIStyle textStyle = new GUIStyle();
+        textStyle.fontSize = 20;
+        textStyle.normal.textColor = Color.white;
+        textStyle.alignment = TextAnchor.MiddleCenter;
 
         int turns = TurnCounter.Instance != null ? TurnCounter.Instance.GetCurrentTurn() : 0;
-        int runCount = RunRecorder.Instance != null ? RunRecorder.Instance.GetRunCount() : 0;
+        int timelineID = TimelineManager.Instance != null ? TimelineManager.Instance.activeTimelineID : 0;
 
-        // Turn count
-        GUI.Label(new Rect(0, Screen.height / 2 - 20, Screen.width, 30),
-            $"Completed in {turns} turns", smallStyle);
+        GUI.Label(new Rect(0, Screen.height / 2 - 30, Screen.width, 30),
+            $"Timeline {timelineID} completed in {turns} turns!", textStyle);
 
-        // Run count
-        GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 30),
-            $"Run #{runCount} complete", smallStyle);
-
-        // Progress to next level
-        int runsNeeded = 3;
-        string progressText;
-
-        if (canProgressToNextLevel)
+        // Count incomplete timelines
+        int incompleteCount = 0;
+        bool allComplete = true;
+        if (TimelineManager.Instance != null)
         {
-            progressText = "[L] Next Level  |  [N] Next Run  |  [R] Restart All";
+            foreach (var timeline in TimelineManager.Instance.GetAllTimelines())
+            {
+                if (!timeline.isComplete && !timeline.isFrozen)
+                {
+                    allComplete = false;
+                    incompleteCount++;
+                }
+            }
+        }
+
+        textStyle.fontSize = 18;
+        textStyle.normal.textColor = Color.gray;
+
+        if (allComplete)
+        {
+            GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 30),
+                "All timelines complete!", textStyle);
         }
         else
         {
-            int runsRemaining = runsNeeded - runCount;
-            progressText = $"[N] Next Run ({runsRemaining} more for next level)  |  [R] Restart All";
+            GUI.Label(new Rect(0, Screen.height / 2 + 10, Screen.width, 30),
+                $"{incompleteCount} frozen timeline(s) remaining", textStyle);
         }
 
-        GUI.Label(new Rect(0, Screen.height / 2 + 50, Screen.width, 30), progressText, smallStyle);
+        // Options
+        textStyle.fontSize = 22;
+        textStyle.normal.textColor = Color.white;
+
+        string options = "[T] Switch Timeline  |  [N] New Timeline  |  [R] Restart All";
+
+        if (allComplete)
+        {
+            options = "[L] Next Level  |  " + options;
+        }
+
+        GUI.Label(new Rect(0, Screen.height / 2 + 60, Screen.width, 30), options, textStyle);
     }
+
 
 }
