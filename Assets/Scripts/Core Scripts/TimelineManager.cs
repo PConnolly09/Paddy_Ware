@@ -12,15 +12,13 @@ public class TimelineManager : MonoBehaviour
 
     [Header("Global State")]
     public int currentDay = 1;
-    public float globalEntropy = 0f; // NEW: The Chaos Meter
+    public float globalEntropy = 0f;
     public StatSet currentDayStats;
+    public ArchetypeData currentArchetype; // The class the Player IS right now
 
-    // Lists
     private List<CloneData> timelineHistory = new List<CloneData>();
     private CloneData currentRecording;
     private PlayerController activePlayer;
-
-    // NEW: Track all world objects to reset them
     private Interactable[] worldObjects;
 
     void Awake()
@@ -28,21 +26,22 @@ public class TimelineManager : MonoBehaviour
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
 
-        // Initialize Stats
         currentDayStats = new StatSet();
 
-        // NEW: Find all interactables
-        worldObjects = FindObjectsOfType<Interactable>();
+        // Ensure default archetype
+        if (currentArchetype == null && EvolutionManager.Instance != null)
+            currentArchetype = EvolutionManager.Instance.neutralArchetype;
 
+        // Use modern Find function
+        worldObjects = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
         StartNewDay();
     }
-
-    // ... (Keep RegisterPlayer and RecordFrame the same) ...
 
     public void RegisterPlayer(PlayerController player)
     {
         activePlayer = player;
-        activePlayer.Initialize(currentDayStats);
+        // The Player is initialized with the CURRENT day's archetype and stats
+        activePlayer.Initialize(currentDayStats, currentArchetype);
     }
 
     public void RecordFrame(Vector2 pos, bool interact, int action)
@@ -53,17 +52,30 @@ public class TimelineManager : MonoBehaviour
         }
     }
 
-    // NEW: Add Entropy with visual log
     public void AddEntropy(float amount)
     {
         globalEntropy += amount;
         Debug.LogWarning($"ENTROPY SPIKE! Current: {globalEntropy}");
-        // Update UI here later
     }
 
     public void EndDay()
     {
-        if (currentRecording != null) timelineHistory.Add(currentRecording);
+        if (currentRecording != null)
+        {
+            // CRITICAL FIX: 
+            // 1. Lock in what the player WAS today.
+            currentRecording.archetype = currentArchetype;
+
+            // 2. Calculate what the player WILL BE tomorrow based on today's actions.
+            ArchetypeData nextClass = EvolutionManager.Instance.DetermineArchetype(currentRecording.recording);
+
+            // 3. Update global state for the Next Day
+            currentArchetype = nextClass;
+
+            timelineHistory.Add(currentRecording);
+
+            Debug.Log($"DAY ENDED. Saved Recording as {currentRecording.archetype.className}. Tomorrow you will be {nextClass.className}.");
+        }
 
         currentDayStats = currentDayStats.GetDecayedCopy();
         currentDay++;
@@ -72,30 +84,32 @@ public class TimelineManager : MonoBehaviour
 
     private void StartNewDay()
     {
-        // 1. Reset Logic
         currentRecording = new CloneData();
         currentRecording.originalDayNumber = currentDay;
         currentRecording.stats = currentDayStats.Clone();
+        // Note: currentRecording.archetype is not set yet, it gets set at EndDay
 
         foreach (var echo in GameObject.FindGameObjectsWithTag("Echo")) Destroy(echo);
 
-        // NEW: Reset World Objects (Trees grow back so Day 1 can chop them again)
-        foreach (var obj in worldObjects) obj.ResetState();
+        if (worldObjects != null)
+        {
+            foreach (var obj in worldObjects) if (obj != null) obj.ResetState();
+        }
 
-        // 2. Spawn History
         foreach (var pastDay in timelineHistory) SpawnEcho(pastDay);
 
-        // 3. Reset Player
         if (activePlayer != null)
         {
             activePlayer.transform.position = playerSpawnPoint.position;
-            activePlayer.Initialize(currentDayStats);
+            // Initialize Player with the NEW evolved archetype
+            activePlayer.Initialize(currentDayStats, currentArchetype);
         }
     }
 
     private void SpawnEcho(CloneData data)
     {
         if (data.recording.Count == 0) return;
+
         GameObject echoObj = Instantiate(echoPrefab, data.recording[0].position, Quaternion.identity);
         echoObj.GetComponent<EchoController>().Initialize(data);
     }

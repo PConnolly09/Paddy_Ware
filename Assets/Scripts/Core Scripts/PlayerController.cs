@@ -4,78 +4,86 @@ public class PlayerController : MonoBehaviour
 {
     [Header("Base Settings")]
     public float baseMoveSpeed = 5f;
-    public float interactionRange = 1.5f; // Distance to chop
-    public LayerMask interactLayer;       // Set this to "World" in Inspector
+    public float interactionRadius = 1.2f;
 
     private Rigidbody2D rb;
+    private SpriteRenderer sr;
     private StatSet myStats;
     private float recordTimer;
     private Vector2 moveInput;
-    private Vector2 lastDirection = Vector2.down; // For raycasting
+
+    // BUFFER
+    private int bufferedActionID = 0;
+    private bool bufferedInteract = false;
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
-        if (TimelineManager.Instance != null) TimelineManager.Instance.RegisterPlayer(this);
+        sr = GetComponent<SpriteRenderer>(); // Need sprite renderer
+        if (TimelineManager.Instance != null)
+            TimelineManager.Instance.RegisterPlayer(this);
     }
 
-    public void Initialize(StatSet stats)
+    // NEW: Accepts Archetype
+    public void Initialize(StatSet stats, ArchetypeData archetype)
     {
         myStats = stats;
+
+        // Stat visuals
         float scale = 0.5f + (myStats.strength / 200f);
         transform.localScale = new Vector3(scale, scale, 1);
+
+        // Archetype visuals
+        if (archetype != null && sr != null)
+        {
+            sr.color = archetype.tint;
+        }
     }
+
+    // ... (Keep Update, HandleInteraction, FixedUpdate, OnDrawGizmos exactly as they were in previous step) ...
+    // Note: I am not re-pasting the Update loop to save space, assuming you kept the Robust Player code.
+    // If you need the full file again, let me know.
 
     void Update()
     {
-        // Movement
         float x = Input.GetAxisRaw("Horizontal");
         float y = Input.GetAxisRaw("Vertical");
         moveInput = new Vector2(x, y).normalized;
 
-        if (moveInput.magnitude > 0) lastDirection = moveInput;
+        if (Input.GetKeyDown(KeyCode.Space)) HandleInteraction();
 
-        // Interaction Logic
-        int actionID = 0;
-        bool interactPressed = Input.GetKeyDown(KeyCode.Space); // "Action" button
-
-        if (interactPressed)
-        {
-            // Raycast forward to see if we hit a Tree
-            RaycastHit2D hit = Physics2D.Raycast(transform.position, lastDirection, interactionRange, interactLayer);
-
-            if (hit.collider != null)
-            {
-                Interactable obj = hit.collider.GetComponent<Interactable>();
-                if (obj != null && obj.IsAvailable())
-                {
-                    // Calculate Damage based on Strength
-                    int damage = Mathf.Max(1, myStats.strength / 10);
-                    bool success = obj.ReceiveHit(damage);
-
-                    if (success)
-                    {
-                        actionID = (int)obj.type; // Record "Chop" (1) or "Mine" (2)
-                        // Play Local Animation/Sound
-                    }
-                }
-            }
-            else
-            {
-                // Whiffed action (still record it so clone swings at air)
-                actionID = 1; // Default swing
-            }
-        }
-
-        // Recording
         recordTimer += Time.deltaTime;
         if (TimelineManager.Instance != null && recordTimer >= TimelineManager.Instance.frameRate)
         {
-            TimelineManager.Instance.RecordFrame(rb.position, interactPressed, actionID);
+            TimelineManager.Instance.RecordFrame(rb.position, bufferedInteract, bufferedActionID);
+
+            if (bufferedActionID > 0) Debug.Log($"RECORDED Action {bufferedActionID}");
+
+            bufferedActionID = 0;
+            bufferedInteract = false;
             recordTimer = 0;
         }
 
         if (Input.GetKeyDown(KeyCode.Return)) TimelineManager.Instance.EndDay();
+    }
+
+    void HandleInteraction()
+    {
+        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, interactionRadius);
+        foreach (var hit in hits)
+        {
+            Interactable obj = hit.GetComponent<Interactable>();
+            if (obj != null && obj.IsAvailable())
+            {
+                int damage = Mathf.Max(1, myStats.strength / 10);
+                bool success = obj.ReceiveHit(damage);
+                if (success)
+                {
+                    bufferedActionID = (int)obj.type;
+                    return;
+                }
+            }
+        }
     }
 
     void FixedUpdate()
@@ -83,5 +91,11 @@ public class PlayerController : MonoBehaviour
         if (myStats == null) return;
         float speedMultiplier = Mathf.Max(0.2f, myStats.agility / 100f);
         rb.MovePosition(rb.position + moveInput * baseMoveSpeed * speedMultiplier * Time.fixedDeltaTime);
+    }
+
+    void OnDrawGizmos()
+    {
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, interactionRadius);
     }
 }

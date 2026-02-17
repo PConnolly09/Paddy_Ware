@@ -5,8 +5,8 @@ using System.Collections.Generic;
 public struct FrameData
 {
     public Vector2 position;
-    public bool isInteracting; // True if 'E' was pressed
-    public int actionID;       // 0=None, 1=Chop, 2=Water
+    public bool isInteracting;
+    public int actionID;
 
     public FrameData(Vector2 pos, bool interact, int action)
     {
@@ -19,11 +19,10 @@ public struct FrameData
 [System.Serializable]
 public class StatSet
 {
-    public int strength = 100; // Affects Chop Speed / Damage
-    public int agility = 100;  // Affects Movement Speed
-    public int focus = 100;    // Affects Crafting Speed / Night Defense
+    public int strength = 100;
+    public int agility = 100;
+    public int focus = 100;
 
-    // Logic to halve stats for the next generation
     public StatSet GetDecayedCopy()
     {
         StatSet newStats = new StatSet();
@@ -43,6 +42,7 @@ public class StatSet
 public class CloneData
 {
     public int originalDayNumber;
+    public ArchetypeData archetype; // Stores what the clone WAS on that day
     public StatSet stats;
     public List<FrameData> recording = new List<FrameData>();
 }
