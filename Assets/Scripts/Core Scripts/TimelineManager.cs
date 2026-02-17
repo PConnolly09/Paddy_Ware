@@ -14,7 +14,7 @@ public class TimelineManager : MonoBehaviour
     public int currentDay = 1;
     public float globalEntropy = 0f;
     public StatSet currentDayStats;
-    public ArchetypeData currentArchetype; // The class the Player IS right now
+    public ArchetypeData currentArchetype;
 
     private List<CloneData> timelineHistory = new List<CloneData>();
     private CloneData currentRecording;
@@ -28,11 +28,10 @@ public class TimelineManager : MonoBehaviour
 
         currentDayStats = new StatSet();
 
-        // Ensure default archetype
+        // Default Neutral Archetype
         if (currentArchetype == null && EvolutionManager.Instance != null)
             currentArchetype = EvolutionManager.Instance.neutralArchetype;
 
-        // Use modern Find function
         worldObjects = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
         StartNewDay();
     }
@@ -40,7 +39,6 @@ public class TimelineManager : MonoBehaviour
     public void RegisterPlayer(PlayerController player)
     {
         activePlayer = player;
-        // The Player is initialized with the CURRENT day's archetype and stats
         activePlayer.Initialize(currentDayStats, currentArchetype);
     }
 
@@ -58,26 +56,70 @@ public class TimelineManager : MonoBehaviour
         Debug.LogWarning($"ENTROPY SPIKE! Current: {globalEntropy}");
     }
 
+    // --- HISTORY MANAGEMENT ---
+
+    public List<CloneData> GetHistory()
+    {
+        return timelineHistory;
+    }
+
+    public void DeleteHistory(int dayNum)
+    {
+        // Find the day in the list
+        CloneData toRemove = timelineHistory.Find(x => x.originalDayNumber == dayNum);
+
+        if (toRemove != null)
+        {
+            timelineHistory.Remove(toRemove);
+            Debug.Log($"TIMELINE: Day {dayNum} has been permanently erased.");
+        }
+    }
+
+    // --------------------------
+
     public void EndDay()
     {
+        // 1. Save the Current Day's Recording Logic
         if (currentRecording != null)
         {
-            // CRITICAL FIX: 
-            // 1. Lock in what the player WAS today.
+            // Lock in what the player WAS today
             currentRecording.archetype = currentArchetype;
 
-            // 2. Calculate what the player WILL BE tomorrow based on today's actions.
-            ArchetypeData nextClass = EvolutionManager.Instance.DetermineArchetype(currentRecording.recording);
-
-            // 3. Update global state for the Next Day
-            currentArchetype = nextClass;
-
+            // Only add to history if we aren't about to reset the timeline via sacrifice
+            // (Optional: You could choose to throw away today's run if you sacrifice)
             timelineHistory.Add(currentRecording);
-
-            Debug.Log($"DAY ENDED. Saved Recording as {currentRecording.archetype.className}. Tomorrow you will be {nextClass.className}.");
         }
 
-        currentDayStats = currentDayStats.GetDecayedCopy();
+        // 2. Check for Manual Draft (Sacrifice)
+        if (DraftSystem.Instance != null && DraftSystem.Instance.nextDayDraft != null)
+        {
+            Debug.Log("TIMELINE: Starting day from DRAFT (Sacrifice Reset).");
+
+            // Load stats from the sacrificed clone
+            currentDayStats = DraftSystem.Instance.nextDayDraft.startingStats;
+            currentArchetype = DraftSystem.Instance.nextDayDraft.startingArchetype;
+
+            // If the draft was a fresh start, maybe reset currentDay? 
+            // For now, we keep incrementing to keep IDs unique.
+
+            // Clear the draft so we don't use it forever
+            DraftSystem.Instance.ClearDraft();
+        }
+        else
+        {
+            // 3. Standard Natural Progression
+            Debug.Log("TIMELINE: Natural Progression.");
+
+            // Decay Stats
+            currentDayStats = currentDayStats.GetDecayedCopy();
+
+            // Evolve Archetype based on actions
+            if (currentRecording != null)
+            {
+                currentArchetype = EvolutionManager.Instance.DetermineArchetype(currentRecording.recording);
+            }
+        }
+
         currentDay++;
         StartNewDay();
     }
@@ -87,7 +129,7 @@ public class TimelineManager : MonoBehaviour
         currentRecording = new CloneData();
         currentRecording.originalDayNumber = currentDay;
         currentRecording.stats = currentDayStats.Clone();
-        // Note: currentRecording.archetype is not set yet, it gets set at EndDay
+        // currentRecording.archetype is set at END of day
 
         foreach (var echo in GameObject.FindGameObjectsWithTag("Echo")) Destroy(echo);
 
@@ -101,7 +143,6 @@ public class TimelineManager : MonoBehaviour
         if (activePlayer != null)
         {
             activePlayer.transform.position = playerSpawnPoint.position;
-            // Initialize Player with the NEW evolved archetype
             activePlayer.Initialize(currentDayStats, currentArchetype);
         }
     }

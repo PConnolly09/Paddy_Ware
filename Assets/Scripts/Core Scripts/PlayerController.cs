@@ -50,7 +50,7 @@ public class PlayerController : MonoBehaviour
         float y = Input.GetAxisRaw("Vertical");
         moveInput = new Vector2(x, y).normalized;
 
-        if (Input.GetKeyDown(KeyCode.Space)) HandleInteraction();
+        if (Input.GetKeyDown(KeyCode.Space)) DetectInteraction();
 
         recordTimer += Time.deltaTime;
         if (TimelineManager.Instance != null && recordTimer >= TimelineManager.Instance.frameRate)
@@ -66,19 +66,31 @@ public class PlayerController : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Return)) TimelineManager.Instance.EndDay();
     }
-
-    void HandleInteraction()
+    void DetectInteraction()
     {
+        bufferedInteract = true;
+
         Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, interactionRadius);
         foreach (var hit in hits)
         {
+            // Check for Altar FIRST
+            SacrificeAltar altar = hit.GetComponent<SacrificeAltar>();
+            if (altar != null)
+            {
+                altar.OpenAltar();
+                return; // Stop processing, we opened a menu
+            }
+
+            // Standard Interactable check
             Interactable obj = hit.GetComponent<Interactable>();
             if (obj != null && obj.IsAvailable())
             {
                 int damage = Mathf.Max(1, myStats.strength / 10);
                 bool success = obj.ReceiveHit(damage);
+
                 if (success)
                 {
+                    Debug.Log($"PLAYER: Buffering Action {(int)obj.type}");
                     bufferedActionID = (int)obj.type;
                     return;
                 }
