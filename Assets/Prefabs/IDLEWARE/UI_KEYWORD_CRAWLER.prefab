@@ -35,7 +35,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 2.0200043, y: -2.5762024}
-  m_SizeDelta: {x: 238.6952, y: 50}
+  m_SizeDelta: {x: 197.98, y: 25}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &4686703756155708267
 CanvasRenderer:
@@ -92,7 +92,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 44.75
+  m_fontSize: 22.35
   m_fontSizeBase: 12
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -174,6 +174,7 @@ RectTransform:
   - {fileID: 4669607809311389017}
   - {fileID: 2765521407806417084}
   - {fileID: 4408054814721793582}
+  - {fileID: 3562658660132788283}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -232,15 +233,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KeywordCrawler
   keyword: gaming
-  crawlIntervalSeconds: 10
-  hypeMultiplier: 1
-  botLevel: 1
+  buyInCost: 0
+  botTotalHype: 0
+  targetSubreddit: popular
   titleText: {fileID: 352616479870894172}
   headlineText: {fileID: 5708402088318197735}
   hypeStatsText: {fileID: 1898239215546368614}
-  timerText: {fileID: 4003285773938844674}
   cycleStatsText: {fileID: 5819140156459685272}
-  upvotesText: {fileID: 5292828864059496464}
+  trendLineText: {fileID: 5292828864059496464}
+  upvotesText: {fileID: 4003285773938844674}
+  graphContainer: {fileID: 3562658660132788283}
+  pointPrefab: {fileID: 3231220587582943664, guid: 0cc053991e84d2a4db7c7f0af3adcad1, type: 3}
+  linePrefab: {fileID: 4670171682784555739, guid: c0aa66c6b17f9df4592ae5a459daae15, type: 3}
 --- !u!1 &4928424662781961170
 GameObject:
   m_ObjectHideFlags: 0
@@ -275,7 +279,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 200, y: 72.424}
+  m_AnchoredPosition: {x: 1.0099945, y: 72.424}
   m_SizeDelta: {x: 200, y: 46.947}
   m_Pivot: {x: 0, y: 0}
 --- !u!222 &3796169119424773319
@@ -525,7 +529,7 @@ GameObject:
   - component: {fileID: 7490827655183691443}
   - component: {fileID: 5292828864059496464}
   m_Layer: 5
-  m_Name: Upvotes_Text
+  m_Name: Trend_Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -548,7 +552,7 @@ RectTransform:
   m_AnchorMin: {x: 1, y: 1}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: -27.576}
-  m_SizeDelta: {x: 229.17, y: 25}
+  m_SizeDelta: {x: 229.17, y: 18.4051}
   m_Pivot: {x: 1, y: 1}
 --- !u!222 &7490827655183691443
 CanvasRenderer:
@@ -578,7 +582,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Next cycle in: 0.0s'
+  m_text: -----
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -605,7 +609,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 22.35
+  m_fontSize: 18
   m_fontSizeBase: 24
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -794,7 +798,7 @@ GameObject:
   - component: {fileID: 1797487408819410817}
   - component: {fileID: 4003285773938844674}
   m_Layer: 5
-  m_Name: Timer_Text
+  m_Name: Upvote_Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -918,6 +922,68 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!1 &6794009736396184930
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3562658660132788283}
+  - component: {fileID: 2302618028483215522}
+  m_Layer: 0
+  m_Name: GraphContainer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &3562658660132788283
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6794009736396184930}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1112699108193811069}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 110.29, y: 9.924007}
+  m_SizeDelta: {x: 209.03, y: 46.946}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &2302618028483215522
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6794009736396184930}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 30649d3a9faa99c48a7b1166b86bf2a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.HorizontalLayoutGroup
+  m_Padding:
+    m_Left: 0
+    m_Right: 0
+    m_Top: 0
+    m_Bottom: 0
+  m_ChildAlignment: 7
+  m_Spacing: 0
+  m_ChildForceExpandWidth: 0
+  m_ChildForceExpandHeight: 1
+  m_ChildControlWidth: 0
+  m_ChildControlHeight: 0
+  m_ChildScaleWidth: 0
+  m_ChildScaleHeight: 0
+  m_ReverseArrangement: 0
 --- !u!1 &8348931585708390051
 GameObject:
   m_ObjectHideFlags: 0
@@ -1088,7 +1154,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 2.0200043, y: 74.659996}
+  m_AnchoredPosition: {x: 2.0200043, y: 119.37}
   m_SizeDelta: {x: 200, y: 25}
   m_Pivot: {x: 0, y: 0}
 --- !u!222 &5520621063166574425

@@ -3,25 +3,34 @@ using System.IO;
 using UnityEngine;
 using System;
 
-// 1. The Data Containers
 [Serializable]
 public class GameData
 {
     public double totalHype = 0;
-    public int creds = 0; // FIXED: Creds now save to the hard drive!
+    public int creds = 100;
     public string lastExitTime = "";
-    public List<BotSaveData> activeBots = new List<BotSaveData>();
+
+    public List<BotSaveData> activeBots = new();
+
+    public List<string> unlockedPowerWords = new();
+    public List<string> unlockedAchievements = new();
+
+    public int lifetimeLiquidations = 0;
+    public double lifetimeHypeMined = 0;
 }
 
 [Serializable]
 public class BotSaveData
 {
     public string keyword;
-    public int level;
-    // Add other stats you want to save here (e.g., custom UI colors, multipliers)
+    public int buyInCostCreds;
+    public double totalHypeMined;
+    public string targetSubreddit;
+
+    // NEW: Added the history array for the line graph to serialize
+    public List<int> hypeHistory;
 }
 
-// 2. The Save Manager
 public class SaveManager : MonoBehaviour
 {
     public static SaveManager Instance { get; private set; }
@@ -34,19 +43,15 @@ public class SaveManager : MonoBehaviour
         if (Instance == null) { Instance = this; }
         else { Destroy(gameObject); return; }
 
-        // This points to a safe, persistent folder on Windows, Mac, iOS, or Android
-        saveFilePath = Application.persistentDataPath + "/IdleCrawlerSave.json";
+        saveFilePath = Application.persistentDataPath + "/IdleBrokerSave.json";
         LoadGame();
     }
 
     public void SaveGame()
     {
-        // Update the exit time right before saving
         currentData.lastExitTime = DateTime.Now.ToBinary().ToString();
-
-        string json = JsonUtility.ToJson(currentData, true); // 'true' formats it nicely
+        string json = JsonUtility.ToJson(currentData, true);
         File.WriteAllText(saveFilePath, json);
-        Debug.Log("Game Saved to: " + saveFilePath);
     }
 
     public void LoadGame()
@@ -55,19 +60,20 @@ public class SaveManager : MonoBehaviour
         {
             string json = File.ReadAllText(saveFilePath);
             currentData = JsonUtility.FromJson<GameData>(json);
-            Debug.Log("Save file loaded successfully.");
+
+            // Safety check: ensure arrays aren't null if loading an old save file
+            if (currentData.activeBots == null) currentData.activeBots = new List<BotSaveData>();
+            foreach (var bot in currentData.activeBots)
+            {
+                if (bot.hypeHistory == null) bot.hypeHistory = new List<int>();
+            }
         }
         else
         {
-            Debug.Log("No save file found. Creating new game profile.");
             currentData = new GameData();
-
-            // Give them a starter bot!
-            currentData.activeBots.Add(new BotSaveData { keyword = "gaming", level = 1 });
         }
     }
 
-    // Auto-save when the app is closed or backgrounded
     private void OnApplicationQuit() { SaveGame(); }
     private void OnApplicationPause(bool pauseStatus) { if (pauseStatus) SaveGame(); }
 }

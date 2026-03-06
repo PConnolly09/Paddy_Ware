@@ -1,11 +1,12 @@
-using System.Collections.Generic;
 using UnityEngine;
+using System.Collections.Generic;
 
 public class EconomyManager : MonoBehaviour
 {
-    // CAPITALIZED!
     public static EconomyManager Instance { get; private set; }
-    public int currentMonitors = 2;
+
+    // List of expensive, high-value words
+    private List<string> powerWords = new List<string> { "apple", "tesla", "gaming", "crypto", "ai" };
 
     private void Awake()
     {
@@ -13,49 +14,59 @@ public class EconomyManager : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    public bool BuyInToKeyword(string newKeyword, int currentActiveBots)
+    // SCOUTING: Calculates how much a word costs to buy based on text analysis
+    public int CalculateKeywordCost(string keyword, int estimatedUpvotes)
     {
-        if (currentActiveBots >= currentMonitors)
+        int baseCost = 25; // Minimum cost for a slow/niche word
+
+        // Traffic tax: Highly upvoted current trends cost more
+        if (estimatedUpvotes > 5000) baseCost += 50;
+        else if (estimatedUpvotes > 1000) baseCost += 20;
+
+        // Power Word Tax: Brands and massive nouns cost a premium
+        if (powerWords.Contains(keyword.ToLower()))
         {
-            if (UIManager.Instance != null) UIManager.Instance.ShowNotification("<color=red>Not enough monitors!</color>");
-            return false;
+            baseCost *= 3;
         }
 
-        double cost = 100 * Mathf.Pow(1.5f, currentActiveBots);
+        return baseCost;
+    }
 
-        if (SaveManager.Instance.currentData.totalHype >= cost)
+    public bool SpendCreds(int amount)
+    {
+        if (SaveManager.Instance.currentData.creds >= amount)
         {
-            SaveManager.Instance.currentData.totalHype -= cost;
+            SaveManager.Instance.currentData.creds -= amount;
+            if (UIManager.Instance != null) UIManager.Instance.UpdateCredsDisplay(SaveManager.Instance.currentData.creds);
             return true;
         }
-
-        if (UIManager.Instance != null) UIManager.Instance.ShowNotification("<color=red>Not enough Data to deploy bot!</color>");
+        if (UIManager.Instance != null) UIManager.Instance.ShowNotification("[ERROR] Insufficient Creds.");
         return false;
     }
 
-    public void LiquidateKeyword(string keyword, double totalDataMinedByBot, int peakUpvotes)
+    // LIQUIDATION MATH: Risk vs Reward
+    public void LiquidateBot(string keyword, int initialCost, double totalHypeMined, int cyclesInFallingState)
     {
-        // MATH FIX: 1 Cred per 50 Data Mined (was 500)
-        int credsEarned = Mathf.FloorToInt((float)totalDataMinedByBot / 50f);
+        // Base return: You get a fraction of your initial Creds back, plus bonuses for Hype mined
+        float basePayout = (initialCost * 0.5f) + (float)(totalHypeMined / 1000f);
 
-        if (peakUpvotes > 10000) credsEarned += 10;
-        else if (peakUpvotes > 2000) credsEarned += 5;
-        else if (peakUpvotes > 500) credsEarned += 2;
+        // DECAY PENALTY: Every cycle spent in "FALLING" removes 10% of your payout value!
+        float penaltyMultiplier = 1.0f - (cyclesInFallingState * 0.1f);
+        if (penaltyMultiplier < 0.1f) penaltyMultiplier = 0.1f; // Floor at 10% value
 
-        if (credsEarned < 1) credsEarned = 1;
+        int finalCredsEarned = Mathf.FloorToInt(basePayout * penaltyMultiplier);
+        if (finalCredsEarned < 1) finalCredsEarned = 1;
 
-        SaveManager.Instance.currentData.creds += credsEarned;
+        SaveManager.Instance.currentData.creds += finalCredsEarned;
+        SaveManager.Instance.currentData.lifetimeLiquidations++;
         SaveManager.Instance.SaveGame();
 
         if (UIManager.Instance != null)
         {
             UIManager.Instance.UpdateCredsDisplay(SaveManager.Instance.currentData.creds);
-            UIManager.Instance.ShowNotification($"<color=cyan>LIQUIDATED {keyword.ToUpper()}</color>. Earned {credsEarned} Creds.");
-        }
 
-        if (GhostTracker.Instance != null)
-        {
-            GhostTracker.Instance.StartGhostTracking(keyword, peakUpvotes);
+            string penaltyNotice = cyclesInFallingState > 0 ? $" [PENALTY: -{cyclesInFallingState * 10}%]" : " [PERFECT TIMING]";
+            UIManager.Instance.ShowNotification($"[LIQUIDATED] {keyword.ToUpper()} for {finalCredsEarned} Creds." + penaltyNotice);
         }
     }
 }
