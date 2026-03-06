@@ -18,8 +18,8 @@ public class WikiAPIConnector : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    // Notice the updated Action signature to pass back all the juicy data stats
-    public IEnumerator PingWikipediaForDamage(string word, int baseScore, Action<double, string, int, int, int> onDamageCalculated)
+    // Simplified to just return the raw data, math is done by RunManager now!
+    public IEnumerator PingWikipedia(string word, Action<long, int> onComplete)
     {
         string url = $"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=\"{word}\"&srprop=wordcount&utf8=&format=json";
 
@@ -32,7 +32,7 @@ public class WikiAPIConnector : MonoBehaviour
         {
             WikiResponse parsedData = JsonUtility.FromJson<WikiResponse>(webRequest.downloadHandler.text);
 
-            int totalHits = 0;
+            long totalHits = 0;
             int topArticleWordCount = 1;
 
             if (parsedData?.query != null)
@@ -44,15 +44,12 @@ public class WikiAPIConnector : MonoBehaviour
                     topArticleWordCount = Mathf.Max(1, parsedData.query.search[0].wordcount);
             }
 
-            double finalDamage = (double)baseScore * totalHits * topArticleWordCount;
-
-            // Pass all the data back to the RunManager so it can be logged in the UI!
-            onDamageCalculated?.Invoke(finalDamage, word, baseScore, totalHits, topArticleWordCount);
+            onComplete?.Invoke(totalHits, topArticleWordCount);
         }
         else
         {
             Debug.LogError($"[API ERROR] {webRequest.error}");
-            onDamageCalculated?.Invoke(0, word, baseScore, 0, 0);
+            onComplete?.Invoke(0, 1);
         }
     }
 }

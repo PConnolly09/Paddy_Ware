@@ -15,10 +15,11 @@ public class DiceDeck : MonoBehaviour
 {
     public static DiceDeck Instance { get; private set; }
 
-    private readonly char[] _d4Vowels = { 'A', 'E', 'I', 'O', 'U', 'Y' };
+    // FIXED: Arrays now perfectly match their dice names
+    private readonly char[] _d4Vowels = { 'A', 'E', 'I', 'O' };
     private readonly char[] _d6Standard = { 'A', 'E', 'S', 'T', 'R', 'N' };
-    private readonly char[] _d8Consonant = { 'B', 'C', 'D', 'F', 'G', 'H', 'L', 'M', 'P' };
-    private readonly char[] _d20Rare = { 'K', 'V', 'W', 'X', 'Y', 'Z', 'J', 'Q' };
+    private readonly char[] _d8Consonant = { 'C', 'D', 'H', 'L', 'M', 'P', 'R', 'T' };
+    private readonly char[] _d20Rare = { 'B', 'F', 'G', 'J', 'K', 'Q', 'V', 'W', 'X', 'Y', 'Z', 'B', 'F', 'H', 'M', 'P', 'V', 'W', 'Y', 'Z' };
 
     public readonly List<DiceType> startingDeckBlueprint = new();
 
@@ -35,7 +36,6 @@ public class DiceDeck : MonoBehaviour
     public void InitializeStartingDeck()
     {
         startingDeckBlueprint.Clear();
-        // A generous starting deck for the run
         for (int i = 0; i < 8; i++) startingDeckBlueprint.Add(DiceType.D4_Vowel);
         for (int i = 0; i < 12; i++) startingDeckBlueprint.Add(DiceType.D6_Standard);
         for (int i = 0; i < 8; i++) startingDeckBlueprint.Add(DiceType.D8_Consonant);
@@ -46,8 +46,6 @@ public class DiceDeck : MonoBehaviour
     {
         currentDrawPile.Clear();
         currentHand.Clear();
-
-        // Copy the blueprint into the draw pile and shuffle it
         currentDrawPile.AddRange(startingDeckBlueprint);
         ShuffleDrawPile();
     }
@@ -69,9 +67,7 @@ public class DiceDeck : MonoBehaviour
         {
             DiceType nextDie = currentDrawPile[0];
             currentDrawPile.RemoveAt(0);
-
-            DieData newDie = RollDie(nextDie);
-            currentHand.Add(newDie);
+            currentHand.Add(RollDie(nextDie));
         }
     }
 
@@ -107,5 +103,23 @@ public class DiceDeck : MonoBehaviour
             PossibleFaces = facesStr,
             ScoreValue = WordValidator.Instance.GetLetterScore(face)
         };
+    }
+
+    // NEW: For the Deck Review Menu
+    public string GetDeckSummary()
+    {
+        int d4 = 0, d6 = 0, d8 = 0, d20 = 0;
+        foreach (var d in startingDeckBlueprint)
+        {
+            if (d == DiceType.D4_Vowel) d4++;
+            else if (d == DiceType.D6_Standard) d6++;
+            else if (d == DiceType.D8_Consonant) d8++;
+            else if (d == DiceType.D20_Rare) d20++;
+        }
+        return $"Total Dice: {startingDeckBlueprint.Count}\n\n" +
+               $"- D4 (Vowels): {d4}\n" +
+               $"- D6 (Standard): {d6}\n" +
+               $"- D8 (Consonants): {d8}\n" +
+               $"- D20 (Rare): {d20}";
     }
 }
