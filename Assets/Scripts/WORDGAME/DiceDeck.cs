@@ -15,7 +15,6 @@ public class DiceDeck : MonoBehaviour
 {
     public static DiceDeck Instance { get; private set; }
 
-    // FIXED: Arrays now perfectly match their dice names
     private readonly char[] _d4Vowels = { 'A', 'E', 'I', 'O' };
     private readonly char[] _d6Standard = { 'A', 'E', 'S', 'T', 'R', 'N' };
     private readonly char[] _d8Consonant = { 'C', 'D', 'H', 'L', 'M', 'P', 'R', 'T' };
@@ -23,7 +22,6 @@ public class DiceDeck : MonoBehaviour
 
     public readonly List<DiceType> startingDeckBlueprint = new();
 
-    // Active encounter data
     public readonly List<DiceType> currentDrawPile = new();
     public readonly List<DieData> currentHand = new();
 
@@ -78,22 +76,17 @@ public class DiceDeck : MonoBehaviour
 
         switch (type)
         {
-            case DiceType.D4_Vowel:
-                face = _d4Vowels[Random.Range(0, _d4Vowels.Length)];
-                facesStr = string.Join(",", _d4Vowels);
-                break;
-            case DiceType.D8_Consonant:
-                face = _d8Consonant[Random.Range(0, _d8Consonant.Length)];
-                facesStr = string.Join(",", _d8Consonant);
-                break;
-            case DiceType.D20_Rare:
-                face = _d20Rare[Random.Range(0, _d20Rare.Length)];
-                facesStr = string.Join(",", _d20Rare);
-                break;
-            default:
-                face = _d6Standard[Random.Range(0, _d6Standard.Length)];
-                facesStr = string.Join(",", _d6Standard);
-                break;
+            case DiceType.D4_Vowel: face = _d4Vowels[Random.Range(0, _d4Vowels.Length)]; facesStr = string.Join(",", _d4Vowels); break;
+            case DiceType.D8_Consonant: face = _d8Consonant[Random.Range(0, _d8Consonant.Length)]; facesStr = string.Join(",", _d8Consonant); break;
+            case DiceType.D20_Rare: face = _d20Rare[Random.Range(0, _d20Rare.Length)]; facesStr = string.Join(",", _d20Rare); break;
+            default: face = _d6Standard[Random.Range(0, _d6Standard.Length)]; facesStr = string.Join(",", _d6Standard); break;
+        }
+
+        // CIPHER BOSS FIX: Check if Cipher is active, if so, force score to 1.
+        int scoreVal = WordValidator.Instance.GetLetterScore(face);
+        if (RunManager.Instance != null && RunManager.Instance.activeBossModifier == BossModifier.Cipher)
+        {
+            scoreVal = 1;
         }
 
         return new DieData
@@ -101,11 +94,10 @@ public class DiceDeck : MonoBehaviour
             Type = type,
             CurrentFace = face,
             PossibleFaces = facesStr,
-            ScoreValue = WordValidator.Instance.GetLetterScore(face)
+            ScoreValue = scoreVal
         };
     }
 
-    // NEW: For the Deck Review Menu
     public string GetDeckSummary()
     {
         int d4 = 0, d6 = 0, d8 = 0, d20 = 0;
@@ -116,10 +108,6 @@ public class DiceDeck : MonoBehaviour
             else if (d == DiceType.D8_Consonant) d8++;
             else if (d == DiceType.D20_Rare) d20++;
         }
-        return $"Total Dice: {startingDeckBlueprint.Count}\n\n" +
-               $"- D4 (Vowels): {d4}\n" +
-               $"- D6 (Standard): {d6}\n" +
-               $"- D8 (Consonants): {d8}\n" +
-               $"- D20 (Rare): {d20}";
+        return $"Total Dice: {startingDeckBlueprint.Count}\n\n- D4 (Vowels): {d4}\n- D6 (Standard): {d6}\n- D8 (Consonants): {d8}\n- D20 (Rare): {d20}";
     }
 }

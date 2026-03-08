@@ -10,9 +10,10 @@ public class WordValidator : MonoBehaviour
     public TextAsset dictionaryFile;
 
     private readonly HashSet<string> _validWords = new(System.StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _burnedWordsThisRun = new(System.StringComparer.OrdinalIgnoreCase);
 
-    // Standard Scrabble letter values
+    // Changed from a HashSet to a Dictionary to track HOW MANY times it was played this run
+    private readonly Dictionary<string, int> _wordsPlayedThisRun = new(System.StringComparer.OrdinalIgnoreCase);
+
     private readonly Dictionary<char, int> _letterScores = new()
     {
         {'A', 1}, {'B', 3}, {'C', 3}, {'D', 2}, {'E', 1}, {'F', 4}, {'G', 2}, {'H', 4},
@@ -39,18 +40,40 @@ public class WordValidator : MonoBehaviour
     public bool IsValidWord(string word)
     {
         string upper = word.ToUpper();
-        if (_validWords.Count == 0) return true; // Fallback for testing without a file
+        if (_validWords.Count == 0) return true;
         return _validWords.Contains(upper);
     }
 
     public bool IsWordBurned(string word)
     {
-        return _burnedWordsThisRun.Contains(word.ToUpper());
+        string upper = word.ToUpper();
+
+        _wordsPlayedThisRun.TryGetValue(upper, out int playsThisRun);
+
+        int allowedPlays = 1;
+        // Check if it's a favorite to grant an extra use!
+        if (LexiconSaveManager.Instance != null && LexiconSaveManager.Instance.GetWordPlayCount(upper) >= LexiconSaveManager.Instance.favoriteThreshold)
+        {
+            allowedPlays = 2;
+        }
+
+        return playsThisRun >= allowedPlays;
     }
 
-    public void BurnWord(string word) { _burnedWordsThisRun.Add(word.ToUpper()); }
-    public void ResetBurnedWordsForNewRun() { _burnedWordsThisRun.Clear(); }
-    public List<string> GetBurnedWordsList() { return _burnedWordsThisRun.ToList(); }
+    public void BurnWord(string word)
+    {
+        string upper = word.ToUpper();
+        if (_wordsPlayedThisRun.ContainsKey(upper)) _wordsPlayedThisRun[upper]++;
+        else _wordsPlayedThisRun[upper] = 1;
+    }
+
+    public void ResetBurnedWordsForNewRun() { _wordsPlayedThisRun.Clear(); }
+
+    public List<string> GetBurnedWordsList()
+    {
+        // Formats the list so the player can see if they used a favorite once or twice
+        return _wordsPlayedThisRun.Select(kvp => $"{kvp.Key} (Played {kvp.Value}x)").ToList();
+    }
 
     public int GetLetterScore(char c)
     {
