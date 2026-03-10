@@ -1,9 +1,9 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 
-// Rebuilt Data Models for the Datamuse API
 [Serializable] public class DatamuseWrapper { public DatamuseWord[] words; }
 [Serializable] public class DatamuseWord { public string word; public string[] tags; public string[] defs; }
 
@@ -17,9 +17,9 @@ public class DictionaryAPIConnector : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    public IEnumerator FetchDefinition(string word, Action<string, string> onComplete)
+    // Now returns a List of ALL parts of speech it qualifies as
+    public IEnumerator FetchDefinition(string word, Action<List<string>, string, bool> onComplete)
     {
-        // md=d (definitions), md=p (parts of speech), max=1 (top result only), sp= (exact spelling)
         string url = $"https://api.datamuse.com/words?sp={word}&md=dp&max=1";
 
         using UnityWebRequest webRequest = UnityWebRequest.Get(url);
@@ -27,43 +27,39 @@ public class DictionaryAPIConnector : MonoBehaviour
 
         if (webRequest.result == UnityWebRequest.Result.Success)
         {
-            // Wrap the JSON array in an object so Unity can parse it
             string json = "{\"words\":" + webRequest.downloadHandler.text + "}";
             DatamuseWrapper parsedData = JsonUtility.FromJson<DatamuseWrapper>(json);
 
             if (parsedData?.words != null && parsedData.words.Length > 0 && parsedData.words[0].word.ToLower() == word.ToLower())
             {
                 DatamuseWord data = parsedData.words[0];
-                string pos = "UNKNOWN";
-                string def = "Definition unavailable in archive.";
+                List<string> posList = new List<string>();
+                string def = "Definition unavailable.";
 
-                // Datamuse uses simple tags: n (noun), v (verb), adj (adjective), adv (adverb)
                 if (data.tags != null)
                 {
-                    if (Array.Exists(data.tags, t => t == "n")) pos = "NOUN";
-                    else if (Array.Exists(data.tags, t => t == "v")) pos = "VERB";
-                    else if (Array.Exists(data.tags, t => t == "adj")) pos = "ADJECTIVE";
-                    else if (Array.Exists(data.tags, t => t == "adv")) pos = "ADVERB";
+                    if (Array.Exists(data.tags, t => t == "n")) posList.Add("NOUN");
+                    if (Array.Exists(data.tags, t => t == "v")) posList.Add("VERB");
+                    if (Array.Exists(data.tags, t => t == "adj")) posList.Add("ADJECTIVE");
+                    if (Array.Exists(data.tags, t => t == "adv")) posList.Add("ADVERB");
                 }
 
-                // Datamuse format is "pos\tDefinition text" (e.g. "n\ta large body of water")
+                if (posList.Count == 0) posList.Add("PROPER/UNKNOWN");
+
                 if (data.defs != null && data.defs.Length > 0)
                 {
                     string rawDef = data.defs[0];
                     string[] splitDef = rawDef.Split('\t');
-
-                    if (splitDef.Length > 1) def = splitDef[1];
-                    else def = rawDef;
-
-                    // Capitalize the first letter for UI polish
+                    def = splitDef.Length > 1 ? splitDef[1] : rawDef;
                     if (def.Length > 0) def = char.ToUpper(def[0]) + def.Substring(1);
                 }
 
-                onComplete?.Invoke(pos, def);
+                // If Datamuse found it, it IS a valid word (Fixes the Proper Noun issue!)
+                onComplete?.Invoke(posList, def, true);
                 yield break;
             }
         }
 
-        onComplete?.Invoke("UNKNOWN", "Definition unavailable in public archives.");
+        onComplete?.Invoke(new List<string> { "UNKNOWN" }, "Definition unavailable.", false);
     }
 }

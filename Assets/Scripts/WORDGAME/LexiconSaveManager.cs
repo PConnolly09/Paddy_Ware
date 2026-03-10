@@ -8,6 +8,7 @@ public class WordRecord
 {
     public string word;
     public int playCount;
+    public double highestScore; // NEW: Personal Best Tracker
 }
 
 [Serializable]
@@ -15,11 +16,9 @@ public class LexiconSaveData
 {
     public List<WordRecord> lifetimeWords = new();
     public List<string> unlockedManuscripts = new();
-
-    // NEW: The Pre-Run Economy & Meta Upgrades
-    public int dataCores = 0; // Permanent Currency
-    public int bonusStartingQueries = 0; // Permanent Upgrade
-    public int bonusStartingD20s = 0; // Permanent Upgrade
+    public int dataCores = 0;
+    public int bonusStartingQueries = 0;
+    public int bonusStartingD20s = 0;
 }
 
 public class LexiconSaveManager : MonoBehaviour
@@ -52,7 +51,6 @@ public class LexiconSaveManager : MonoBehaviour
         {
             string json = File.ReadAllText(_saveFilePath);
             currentData = JsonUtility.FromJson<LexiconSaveData>(json);
-
             if (currentData.unlockedManuscripts == null) currentData.unlockedManuscripts = new List<string>();
         }
         else
@@ -67,13 +65,33 @@ public class LexiconSaveManager : MonoBehaviour
         return record != null ? record.playCount : 0;
     }
 
-    public void RecordWordPlay(string word)
+    public double GetWordHighestScore(string word)
     {
+        WordRecord record = currentData.lifetimeWords.Find(w => w.word == word.ToUpper());
+        return record != null ? record.highestScore : 0;
+    }
+
+    // NEW: Now returns whether this broke a personal best!
+    public void RecordWordPlay(string word, double score, out bool isNewHighScore)
+    {
+        isNewHighScore = false;
         string upper = word.ToUpper();
         WordRecord record = currentData.lifetimeWords.Find(w => w.word == upper);
 
-        if (record != null) record.playCount++;
-        else currentData.lifetimeWords.Add(new WordRecord { word = upper, playCount = 1 });
+        if (record != null)
+        {
+            record.playCount++;
+            if (score > record.highestScore)
+            {
+                record.highestScore = score;
+                isNewHighScore = true;
+            }
+        }
+        else
+        {
+            currentData.lifetimeWords.Add(new WordRecord { word = upper, playCount = 1, highestScore = score });
+            isNewHighScore = true; // First time playing is a guaranteed high score!
+        }
 
         SaveGame();
     }

@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6d9ad2688e42f448a5439f23b314e27, type: 3}
+  m_Name: DefaultSettings
+  m_EditorClassIdentifier: Assembly-CSharp::LexiconSettingsSO
+  maxLevel: 50
+  baseFirewallHP: 500000000
+  hpScaleMultiplier: 1.5
+  startingQueries: 5
+  startingDiscards: 3
+  startingRerolls: 2
+  lengthMultipliers:
+  - 0
+  - 0
+  - 0.5
+  - 1
+  - 2
+  - 3.5
+  - 5
+  - 8
+  rareWordBonus: 5
+  uncommonWordBonus: 2.5
+  commonWordBonus: 1
+  mainstreamPenalty: 0.5

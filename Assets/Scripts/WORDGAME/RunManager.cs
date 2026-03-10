@@ -9,22 +9,20 @@ public class RunManager : MonoBehaviour
 {
     public static RunManager Instance { get; private set; }
 
+    [Header("Game Settings")]
+    public LexiconSettingsSO settings;
+
     [Header("Run State")]
     public RunState currentState;
     public int currentLevel = 1;
-
-    [Header("The Economy")]
     public int currentCredits = 0;
-    public int totalCreditsSpent = 0;
 
     [Header("The Firewall")]
     public double targetFirewallHP;
     public double currentDamageDealt;
-    public int maxQueries = 5;
     public int queriesRemaining;
-    public int maxHandSize = 7;
-
-    [Header("Boss Encounter")]
+    public int discardsRemaining;
+    public int rerollsRemaining;
     public bool isBossLevel = false;
     public BossModifier activeBossModifier = BossModifier.None;
     public string activeBossDescription = "";
@@ -44,22 +42,30 @@ public class RunManager : MonoBehaviour
 
     public readonly List<Relic> activeRelics = new();
 
+    public class ScoreBreakdown
+    {
+        public string word, pos, def;
+        public int baseScore, finalBaseScore;
+        public long hits, finalHits;
+        public int tomeSize, finalTomeSize;
+        public float lengthMult, rarityMult;
+        public List<string> relicLogs = new();
+        public bool isNewWord, isFavorite, isNewHighScore;
+        public double totalDamage;
+    }
+
     private void Awake()
     {
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
     }
 
-    private void Start()
-    {
-        ShopManager.Instance.GeneratePreRunShop();
-    }
+    private void Start() { ShopManager.Instance.GeneratePreRunShop(); }
 
     public void StartNewRun()
     {
         currentLevel = 1;
-        currentCredits = 300; // FIX: Start runs with 300 credits!
-        totalCreditsSpent = 0;
+        currentCredits = 300;
 
         totalWordsEntered = 0;
         firewallsBreached = 0;
@@ -71,41 +77,42 @@ public class RunManager : MonoBehaviour
         activeRelics.Clear();
 
         WordValidator.Instance.ResetBurnedWordsForNewRun();
-
-        maxQueries = 5 + LexiconSaveManager.Instance.currentData.bonusStartingQueries;
         DiceDeck.Instance.InitializeStartingDeck();
-        for (int i = 0; i < LexiconSaveManager.Instance.currentData.bonusStartingD20s; i++)
-        {
-            DiceDeck.Instance.startingDeckBlueprint.Add(DiceType.D20_Rare);
-        }
+        for (int i = 0; i < LexiconSaveManager.Instance.currentData.bonusStartingD20s; i++) DiceDeck.Instance.startingDeckBlueprint.Add(DiceType.D20_Rare);
 
         GenerateEncounter();
     }
 
     private void GenerateEncounter()
     {
+        if (currentLevel > settings.maxLevel) { return; }
+
         isBossLevel = currentLevel % 5 == 0;
         activeBossModifier = BossModifier.None;
         activeBossDescription = "";
 
-        double hpCalc = 500000000 * Mathf.Pow(1.5f, currentLevel - 1);
+        double hpCalc = settings.baseFirewallHP * Mathf.Pow(settings.hpScaleMultiplier, currentLevel - 1);
 
         if (isBossLevel)
         {
             activeBossModifier = (BossModifier)UnityEngine.Random.Range(1, 5);
-
             switch (activeBossModifier)
             {
                 case BossModifier.Titan: hpCalc *= 4.0f; activeBossDescription = "THE TITAN: Massive HP pool."; break;
                 case BossModifier.Cipher: hpCalc *= 2.5f; activeBossDescription = "THE CIPHER: All letters have a base score of 1."; break;
                 case BossModifier.Virus: hpCalc *= 2.5f; activeBossDescription = "THE VIRUS: All Relics are disabled."; break;
-                case BossModifier.Drain: hpCalc *= 2.5f; activeBossDescription = "THE DRAIN: Start with 2 fewer Queries."; break;
+                case BossModifier.Drain: hpCalc *= 2.5f; activeBossDescription = "THE DRAIN: Resources halved."; break;
             }
         }
 
         targetFirewallHP = hpCalc;
         currentDamageDealt = 0;
-        queriesRemaining = (activeBossModifier == BossModifier.Drain) ? Mathf.Max(1, maxQueries - 2) : maxQueries;
+
+        int bQueries = settings.startingQueries + LexiconSaveManager.Instance.currentData.bonusStartingQueries;
+        queriesRemaining = (activeBossModifier == BossModifier.Drain) ? Mathf.Max(1, bQueries - 2) : bQueries;
+        discardsRemaining = settings.startingDiscards;
+        rerollsRemaining = settings.startingRerolls;
+
         wordsUsedThisLevel = 0;
         diceSpentThisLevel = 0;
 
@@ -117,139 +124,184 @@ public class RunManager : MonoBehaviour
     public void StartTurn()
     {
         currentState = RunState.Drafting;
-        DiceDeck.Instance.FillHand(maxHandSize);
-        WordUIManager.Instance.SpawnRolledLetters(DiceDeck.Instance.currentHand);
+        DiceDeck.Instance.FillHand(7);
+        WordUIManager.Instance.RefreshFixedBoard(DiceDeck.Instance.currentHand);
         UpdateHUD();
     }
 
-    public void DiscardSelectedLetters(List<DieData> selectedDice)
+    public void ProcessDiscard(DieData dieToDiscard)
     {
-        if (currentState != RunState.Drafting || selectedDice.Count == 0) return;
+        if (discardsRemaining <= 0 || currentState != RunState.Drafting) return;
+        discardsRemaining--;
+        DiceDeck.Instance.currentHand.Remove(dieToDiscard);
+        StartTurn();
+    }
 
-        queriesRemaining--;
-        foreach (DieData die in selectedDice) DiceDeck.Instance.currentHand.Remove(die);
-        WordUIManager.Instance.ClearDraftingArea();
-
-        if (queriesRemaining <= 0 && currentDamageDealt < targetFirewallHP) TriggerDefeat();
-        else StartTurn();
+    public void ProcessReroll(DieData dieToReroll)
+    {
+        if (rerollsRemaining <= 0 || currentState != RunState.Drafting) return;
+        rerollsRemaining--;
+        DiceDeck.Instance.currentHand.Remove(dieToReroll);
+        DiceDeck.Instance.currentDrawPile.Insert(0, dieToReroll.Type);
+        StartTurn();
     }
 
     public void SubmitWord(string spelledWord, List<DieData> usedDice)
     {
         if (currentState != RunState.Drafting) return;
 
-        if (!WordValidator.Instance.IsValidWord(spelledWord)) { WordUIManager.Instance.LogError($"'{spelledWord}' is not recognized."); WordUIManager.Instance.OnClearButtonClicked(); return; }
-        if (WordValidator.Instance.IsWordBurned(spelledWord)) { WordUIManager.Instance.LogError($"'{spelledWord}' has reached its burn limit."); WordUIManager.Instance.OnClearButtonClicked(); return; }
-
-        currentState = RunState.Resolving;
-        WordValidator.Instance.BurnWord(spelledWord);
-        queriesRemaining--;
-        wordsUsedThisLevel++;
-        totalWordsEntered++;
-        diceSpentThisLevel += usedDice.Count;
-
-        foreach (char c in spelledWord.ToUpper())
+        if (WordValidator.Instance.IsWordBurned(spelledWord))
         {
-            if (letterUsageCount.ContainsKey(c)) letterUsageCount[c]++;
-            else letterUsageCount[c] = 1;
+            WordUIManager.Instance.LogError($"'{spelledWord}' has reached its burn limit.");
+            WordUIManager.Instance.ReturnLettersToHand();
+            return;
         }
 
-        foreach (DieData die in usedDice) DiceDeck.Instance.currentHand.Remove(die);
-        UpdateHUD();
+        // Lock state so they can't click Submit 10 times during the API call
+        currentState = RunState.Resolving;
 
-        int baseScore = WordValidator.Instance.CalculateBaseScore(spelledWord);
-
-        StartCoroutine(DictionaryAPIConnector.Instance.FetchDefinition(spelledWord, (pos, def) =>
+        // 1. Wikipedia is the ultimate truth. We ping it FIRST.
+        StartCoroutine(WikiAPIConnector.Instance.PingWikipedia(spelledWord, (hits, size) =>
         {
-            StartCoroutine(WikiAPIConnector.Instance.PingWikipedia(spelledWord, (hits, size) =>
+            if (hits <= 0)
             {
-                ExecuteDamageMath(spelledWord, pos, def, baseScore, hits, size);
+                WordUIManager.Instance.LogError($"ACCESS DENIED: '{spelledWord}' returned 0 Wikipedia hits.");
+                WordUIManager.Instance.ReturnLettersToHand();
+                currentState = RunState.Drafting; // Unlock board
+                return;
+            }
+
+            // 2. If it exists on Wiki, ping Datamuse for the definition/grammar
+            StartCoroutine(DictionaryAPIConnector.Instance.FetchDefinition(spelledWord, (posList, def, isValidAPI) =>
+            {
+                // If it isn't in Datamuse (e.g. "MICROSOFT" or "GANDALF"), we declare it a PROPER NOUN!
+                if (!isValidAPI)
+                {
+                    posList = new List<string> { "NOUN", "PROPER NOUN" };
+                    def = "Data Entity / Uncatalogued Brand / Proper Noun.";
+                }
+
+                // Complete the Submission Logic
+                WordValidator.Instance.BurnWord(spelledWord);
+                queriesRemaining--;
+                wordsUsedThisLevel++;
+                totalWordsEntered++;
+                diceSpentThisLevel += usedDice.Count;
+
+                foreach (char c in spelledWord.ToUpper())
+                {
+                    if (letterUsageCount.ContainsKey(c)) letterUsageCount[c]++;
+                    else letterUsageCount[c] = 1;
+                }
+
+                foreach (DieData die in usedDice) DiceDeck.Instance.currentHand.Remove(die);
+
+                int baseScore = WordValidator.Instance.CalculateBaseScore(spelledWord);
+
+                ExecuteDamageMath(spelledWord, posList, def, baseScore, hits, size);
             }));
         }));
     }
 
-    private void ExecuteDamageMath(string word, string pos, string def, int baseScore, long rawHits, int tomeSize)
+    private void ExecuteDamageMath(string word, List<string> posList, string def, int baseScore, long rawHits, int tomeSize)
     {
-        int finalBaseScore = baseScore;
-        long finalHits = rawHits;
-        double finalTomeSize = tomeSize;
+        ScoreBreakdown bd = new ScoreBreakdown
+        {
+            word = word,
+            pos = string.Join(", ", posList),
+            def = def,
+            baseScore = baseScore,
+            finalBaseScore = baseScore,
+            hits = rawHits,
+            finalHits = rawHits,
+            tomeSize = tomeSize,
+            finalTomeSize = tomeSize
+        };
+
+        if (activeBossModifier == BossModifier.Cipher) bd.finalBaseScore = word.Length;
+
         double dmgMultiplier = 1.0;
         string upperWord = word.ToUpper();
-        string upperPos = pos.ToUpper();
 
-        List<string> triggeredRelics = new();
+        bd.lengthMult = settings.lengthMultipliers[Mathf.Clamp(word.Length, 0, settings.lengthMultipliers.Length - 1)];
+        bd.rarityMult = settings.commonWordBonus;
 
-        if (activeBossModifier == BossModifier.Cipher) finalBaseScore = word.Length;
+        if (rawHits < 1000000) bd.rarityMult = settings.rareWordBonus;
+        else if (rawHits < 10000000) bd.rarityMult = settings.uncommonWordBonus;
+        else if (rawHits > 100000000) bd.rarityMult = settings.mainstreamPenalty;
 
-        bool relicsEnabled = activeBossModifier != BossModifier.Virus;
+        dmgMultiplier *= (bd.lengthMult * bd.rarityMult);
 
-        if (relicsEnabled)
+        if (activeBossModifier != BossModifier.Virus)
         {
-            if (activeRelics.Contains(Relic.NounOverclock) && upperPos.Contains("NOUN")) { dmgMultiplier *= 1.5; triggeredRelics.Add("Noun Overclock"); }
-            if (activeRelics.Contains(Relic.VerbDrive) && upperPos.Contains("VERB")) { finalHits += 5000000; triggeredRelics.Add("Verb Drive"); }
-            if (activeRelics.Contains(Relic.AdjectiveArray) && upperPos.Contains("ADJECTIVE")) { finalBaseScore += (word.Length * 2); triggeredRelics.Add("Adjective Array"); }
-            if (activeRelics.Contains(Relic.AdverbAccelerator) && upperPos.Contains("ADVERB")) { finalTomeSize *= 2.0; triggeredRelics.Add("Adverb Accelerator"); }
+            if (activeRelics.Contains(Relic.NounOverclock) && posList.Contains("NOUN")) { dmgMultiplier *= 1.5; bd.relicLogs.Add("Noun Overclock (x1.5 Mult)"); }
+            if (activeRelics.Contains(Relic.VerbDrive) && posList.Contains("VERB")) { bd.finalHits += 5000000; bd.relicLogs.Add("Verb Drive (+5M Hits)"); }
+
+            if (activeRelics.Contains(Relic.AdjectiveArray) && posList.Contains("ADJECTIVE")) { bd.finalBaseScore += (word.Length * 2); bd.relicLogs.Add($"Adjective Array (+{word.Length * 2} Base)"); }
+            if (activeRelics.Contains(Relic.AdverbAccelerator) && posList.Contains("ADVERB")) { bd.finalTomeSize *= 2; bd.relicLogs.Add("Adverb Accelerator (x2 Tome)"); }
 
             if (activeRelics.Contains(Relic.VowelBattery))
             {
                 int vowelCount = upperWord.Count(c => "AEIOU".Contains(c));
-                if (vowelCount > 0) { finalBaseScore += (vowelCount * 2); triggeredRelics.Add("Vowel Battery"); }
+                if (vowelCount > 0) { bd.finalBaseScore += (vowelCount * 2); bd.relicLogs.Add($"Vowel Battery (+{vowelCount * 2} Base)"); }
             }
             if (activeRelics.Contains(Relic.ConsonantCruncher))
             {
                 int maxCons = 0, currentCons = 0;
                 foreach (char c in upperWord) { if (!"AEIOU".Contains(c)) currentCons++; else { if (currentCons > maxCons) maxCons = currentCons; currentCons = 0; } }
                 if (currentCons > maxCons) maxCons = currentCons;
-                if (maxCons >= 4) { dmgMultiplier *= 2.0; triggeredRelics.Add("Consonant Cruncher"); }
+                if (maxCons >= 4) { dmgMultiplier *= 2.0; bd.relicLogs.Add("Consonant Cruncher (x2.0 Mult)"); }
             }
             if (activeRelics.Contains(Relic.DoubleVision))
             {
                 bool hasDouble = false;
                 for (int i = 0; i < upperWord.Length - 1; i++) if (upperWord[i] == upperWord[i + 1]) hasDouble = true;
-                if (hasDouble) { dmgMultiplier *= 2.0; triggeredRelics.Add("Double Vision"); }
+                if (hasDouble) { dmgMultiplier *= 2.0; bd.relicLogs.Add("Double Vision (x2.0 Mult)"); }
             }
-            if (activeRelics.Contains(Relic.QwertyVirus) && upperWord.IndexOfAny(new char[] { 'Q', 'Z', 'J', 'X' }) >= 0) { dmgMultiplier *= 3.0; triggeredRelics.Add("QWERTY Virus"); }
+            if (activeRelics.Contains(Relic.QwertyVirus) && upperWord.IndexOfAny(new char[] { 'Q', 'Z', 'J', 'X' }) >= 0) { dmgMultiplier *= 3.0; bd.relicLogs.Add("QWERTY Virus (x3.0 Mult)"); }
 
-            if (activeRelics.Contains(Relic.ShortCircuit) && word.Length == 3) { finalHits += 5000000; triggeredRelics.Add("Short Circuit"); }
-            if (activeRelics.Contains(Relic.FourLetterWord) && word.Length == 4) { finalBaseScore *= 3; triggeredRelics.Add("Four-Letter Word"); }
-            if (activeRelics.Contains(Relic.TheLongCon) && word.Length >= 7) { finalBaseScore += 10; dmgMultiplier *= 1.5; triggeredRelics.Add("The Long Con"); }
+            if (activeRelics.Contains(Relic.ShortCircuit) && word.Length == 3) { bd.finalHits += 5000000; bd.relicLogs.Add("Short Circuit (+5M Hits)"); }
+            if (activeRelics.Contains(Relic.FourLetterWord) && word.Length == 4) { bd.finalBaseScore *= 3; bd.relicLogs.Add("Four-Letter Word (x3 Base)"); }
+            if (activeRelics.Contains(Relic.TheLongCon) && word.Length >= 7) { bd.finalBaseScore += 10; dmgMultiplier *= 1.5; bd.relicLogs.Add("The Long Con (+10 Base, x1.5 Mult)"); }
 
-            if (activeRelics.Contains(Relic.Pluralizer) && upperWord.EndsWith("S")) { finalHits += 2000000; triggeredRelics.Add("Pluralizer"); }
-            if (activeRelics.Contains(Relic.GerundEngine) && upperWord.EndsWith("ING")) { finalTomeSize *= 1.5; triggeredRelics.Add("Gerund Engine"); }
-            if (activeRelics.Contains(Relic.PrefixProtocol) && (upperWord.StartsWith("RE") || upperWord.StartsWith("UN"))) { finalBaseScore *= 2; triggeredRelics.Add("Prefix Protocol"); }
-            if (activeRelics.Contains(Relic.PalindromeProtocol))
-            {
-                char[] arr = upperWord.ToCharArray(); System.Array.Reverse(arr); string rev = new string(arr);
-                if (upperWord == rev && upperWord.Length > 1) { dmgMultiplier *= 5.0; triggeredRelics.Add("Palindrome Protocol"); }
-            }
+            if (activeRelics.Contains(Relic.Pluralizer) && upperWord.EndsWith("S")) { bd.finalHits += 2000000; bd.relicLogs.Add("Pluralizer (+2M Hits)"); }
+            if (activeRelics.Contains(Relic.GerundEngine) && upperWord.EndsWith("ING")) { bd.finalTomeSize = (int)(bd.finalTomeSize * 1.5); bd.relicLogs.Add("Gerund Engine (x1.5 Tome)"); }
+            if (activeRelics.Contains(Relic.PrefixProtocol) && (upperWord.StartsWith("RE") || upperWord.StartsWith("UN"))) { bd.finalBaseScore *= 2; bd.relicLogs.Add("Prefix Protocol (x2 Base)"); }
 
-            if (activeRelics.Contains(Relic.TomeSkimmer) && tomeSize < 500) { dmgMultiplier *= 3.0; triggeredRelics.Add("Tome Skimmer"); }
-            if (activeRelics.Contains(Relic.MainstreamInjector) && rawHits > 50000000) { finalBaseScore += 15; triggeredRelics.Add("Mainstream Injector"); }
-            if (activeRelics.Contains(Relic.HipsterCache) && rawHits < 1000000) { dmgMultiplier *= 3.0; triggeredRelics.Add("Hipster Cache"); }
+            char[] arr = upperWord.ToCharArray(); System.Array.Reverse(arr); string rev = new string(arr);
+            if (activeRelics.Contains(Relic.PalindromeProtocol) && upperWord == rev && upperWord.Length > 1) { dmgMultiplier *= 5.0; bd.relicLogs.Add("Palindrome Protocol (x5.0 Mult)"); }
 
-            if (activeRelics.Contains(Relic.LastResort) && queriesRemaining == 0) { dmgMultiplier *= 3.0; triggeredRelics.Add("Last Resort"); }
-            if (activeRelics.Contains(Relic.FirstStrike) && wordsUsedThisLevel == 1) { dmgMultiplier *= 2.0; triggeredRelics.Add("First Strike"); }
+            if (activeRelics.Contains(Relic.TomeSkimmer) && tomeSize < 500) { dmgMultiplier *= 3.0; bd.relicLogs.Add("Tome Skimmer (x3.0 Mult)"); }
+            if (activeRelics.Contains(Relic.MainstreamInjector) && rawHits > 50000000) { bd.finalBaseScore += 15; bd.relicLogs.Add("Mainstream Injector (+15 Base)"); }
+            if (activeRelics.Contains(Relic.HipsterCache) && rawHits < 1000000) { dmgMultiplier *= 3.0; bd.relicLogs.Add("Hipster Cache (x3.0 Mult)"); }
+
+            if (activeRelics.Contains(Relic.LastResort) && queriesRemaining == 0) { dmgMultiplier *= 3.0; bd.relicLogs.Add("Last Resort (x3.0 Mult)"); }
+            if (activeRelics.Contains(Relic.FirstStrike) && wordsUsedThisLevel == 1) { dmgMultiplier *= 2.0; bd.relicLogs.Add("First Strike (x2.0 Mult)"); }
         }
-        else { triggeredRelics.Add("<color=#FF0000>DISABLED BY VIRUS</color>"); }
+        else { bd.relicLogs.Add("<color=#FF0000>DISABLED BY VIRUS</color>"); }
 
         int lifetimePlays = LexiconSaveManager.Instance.GetWordPlayCount(word);
-        bool isNewWord = lifetimePlays == 0;
-        bool isFavorite = lifetimePlays >= LexiconSaveManager.Instance.favoriteThreshold;
+        bd.isNewWord = lifetimePlays == 0;
+        bd.isFavorite = lifetimePlays >= LexiconSaveManager.Instance.favoriteThreshold;
 
-        if (isNewWord) dmgMultiplier *= 1.5;
-        if (isFavorite) dmgMultiplier *= 1.2;
+        if (bd.isNewWord) dmgMultiplier *= 1.5;
+        if (bd.isFavorite) dmgMultiplier *= 1.2;
 
-        double totalDamage = (double)finalBaseScore * finalHits * finalTomeSize * dmgMultiplier;
-        currentDamageDealt += totalDamage;
+        bd.totalDamage = (double)bd.finalBaseScore * bd.finalHits * bd.finalTomeSize * dmgMultiplier;
 
-        if (totalDamage > highestScore) { highestScore = totalDamage; highestScoringWord = word; }
+        if (bd.totalDamage > highestScore) { highestScore = bd.totalDamage; highestScoringWord = word; }
         if (rawHits < lowestWikiHits && rawHits > 0) { lowestWikiHits = rawHits; mostUniqueWord = word; }
 
-        LexiconSaveManager.Instance.RecordWordPlay(word);
+        LexiconSaveManager.Instance.RecordWordPlay(word, bd.totalDamage, out bd.isNewHighScore);
 
-        string relicLog = triggeredRelics.Count > 0 ? string.Join(", ", triggeredRelics) : "";
-        WordUIManager.Instance.LogDamage(word, pos, def, finalBaseScore, finalHits, (int)finalTomeSize, dmgMultiplier, totalDamage, isNewWord, isFavorite, relicLog);
+        UpdateHUD();
 
+        StartCoroutine(WordUIManager.Instance.AnimateScoringSequence(bd));
+    }
+
+    public void ApplyCalculatedDamage(double totalDamage)
+    {
+        currentDamageDealt += totalDamage;
         UpdateHUD();
 
         if (currentDamageDealt >= targetFirewallHP) TriggerVictory();
@@ -260,18 +312,21 @@ public class RunManager : MonoBehaviour
     private void TriggerVictory()
     {
         currentState = RunState.Victory;
-        firewallsBreached++;
-        int creditReward = (100 + (queriesRemaining * 50)) * (isBossLevel ? 3 : 1);
-        currentCredits += creditReward;
-        WordUIManager.Instance.ShowVictoryScreen(wordsUsedThisLevel, diceSpentThisLevel, queriesRemaining, currentDamageDealt, creditReward, isBossLevel);
+        currentCredits += (100 + (queriesRemaining * 50));
+
+        if (isBossLevel) WordUIManager.Instance.ShowBossVictoryScreen(currentDamageDealt, currentCredits);
+        else
+        {
+            WordUIManager.Instance.ShowTransientMessage("<color=#00FF00>FIREWALL BREACHED. ADVANCING...</color>");
+            currentLevel++;
+            GenerateEncounter();
+        }
     }
 
-    public void AdvanceToNextLevel()
+    public void AdvanceFromBossVictory()
     {
-        if (currentState != RunState.Victory) return;
-
-        if (isBossLevel) { currentState = RunState.Shopping; ShopManager.Instance.GenerateMidRunShop(); }
-        else { currentLevel++; GenerateEncounter(); }
+        currentState = RunState.Shopping;
+        ShopManager.Instance.GenerateMidRunShop();
     }
 
     public void CloseShopAndAdvance()
@@ -304,7 +359,7 @@ public class RunManager : MonoBehaviour
 
     private void UpdateHUD()
     {
-        if (WordUIManager.Instance != null)
-            WordUIManager.Instance.UpdateRunStats(currentLevel, currentDamageDealt, targetFirewallHP, queriesRemaining, DiceDeck.Instance.currentDrawPile.Count, currentCredits, activeRelics);
+        if (WordUIManager.Instance != null && settings != null)
+            WordUIManager.Instance.UpdateRunStats(currentLevel, settings.maxLevel, currentDamageDealt, targetFirewallHP, queriesRemaining, discardsRemaining, rerollsRemaining, currentCredits, activeRelics);
     }
 }

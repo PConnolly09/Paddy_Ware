@@ -6,12 +6,7 @@ public class WordValidator : MonoBehaviour
 {
     public static WordValidator Instance { get; private set; }
 
-    [Header("Dictionary Source")]
-    public TextAsset dictionaryFile;
-
-    private readonly HashSet<string> _validWords = new(System.StringComparer.OrdinalIgnoreCase);
-
-    // Changed from a HashSet to a Dictionary to track HOW MANY times it was played this run
+    // Tracks how many times a word was played THIS run to check against burn limits
     private readonly Dictionary<string, int> _wordsPlayedThisRun = new(System.StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<char, int> _letterScores = new()
@@ -26,22 +21,6 @@ public class WordValidator : MonoBehaviour
     {
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
-
-        LoadDictionary();
-    }
-
-    private void LoadDictionary()
-    {
-        if (dictionaryFile == null) return;
-        string[] lines = dictionaryFile.text.Split(new[] { '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-        foreach (string line in lines) _validWords.Add(line.Trim().ToUpper());
-    }
-
-    public bool IsValidWord(string word)
-    {
-        string upper = word.ToUpper();
-        if (_validWords.Count == 0) return true;
-        return _validWords.Contains(upper);
     }
 
     public bool IsWordBurned(string word)
@@ -51,7 +30,6 @@ public class WordValidator : MonoBehaviour
         _wordsPlayedThisRun.TryGetValue(upper, out int playsThisRun);
 
         int allowedPlays = 1;
-        // Check if it's a favorite to grant an extra use!
         if (LexiconSaveManager.Instance != null && LexiconSaveManager.Instance.GetWordPlayCount(upper) >= LexiconSaveManager.Instance.favoriteThreshold)
         {
             allowedPlays = 2;
@@ -71,7 +49,6 @@ public class WordValidator : MonoBehaviour
 
     public List<string> GetBurnedWordsList()
     {
-        // Formats the list so the player can see if they used a favorite once or twice
         return _wordsPlayedThisRun.Select(kvp => $"{kvp.Key} (Played {kvp.Value}x)").ToList();
     }
 
