@@ -35,10 +35,10 @@ public class ThemeManager : MonoBehaviour
         }
     }
 
-    // Call this if you ever add a feature to let the user change fonts in the settings menu!
     public void RefreshAllTextInScene()
     {
-        ThemedText[] allTextElements = FindObjectsOfType<ThemedText>(true); // true includes inactive objects
+        // Modern, optimized Unity API call
+        ThemedText[] allTextElements = FindObjectsByType<ThemedText>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (ThemedText textObj in allTextElements)
         {
             textObj.ApplyTheme();

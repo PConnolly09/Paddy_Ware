@@ -13,11 +13,21 @@ MonoBehaviour:
   m_Name: DefaultSettings
   m_EditorClassIdentifier: Assembly-CSharp::LexiconSettingsSO
   maxLevel: 50
-  baseFirewallHP: 500000000
+  baseFirewallHP: 500
   hpScaleMultiplier: 1.5
+  standardBossHpMultiplier: 1.5
+  titanBossHpMultiplier: 3
   startingQueries: 5
-  startingDiscards: 3
+  startingDiscards: 2
   startingRerolls: 2
+  hitPowerScaling: 0.25
+  anomalyMultiplier: 2.5
+  ultraRareMultiplier: 1.8
+  rareMultiplier: 1.4
+  commonMultiplier: 1
+  obscurityFrequencyThreshold: 2
+  baseObscurityStackValue: 0.25
+  obscurityStreakBonus: 0.1
   lengthMultipliers:
   - 0
   - 0
@@ -27,7 +37,3 @@ MonoBehaviour:
   - 3.5
   - 5
   - 8
-  rareWordBonus: 5
-  uncommonWordBonus: 2.5
-  commonWordBonus: 1
-  mainstreamPenalty: 0.5

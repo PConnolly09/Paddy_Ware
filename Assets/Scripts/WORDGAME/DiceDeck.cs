@@ -1,29 +1,107 @@
-using System.Collections.Generic;
 using UnityEngine;
+using System.Collections.Generic;
 
-public enum DiceType { D4_Vowel, D6_Standard, D8_Consonant, D20_Rare }
+public enum DieEffectType
+{
+    None,
+    LetterMultiplier, // Multiplies just this letter's score (e.g., x3 to 'Z')
+    WordMultiplier,   // Multiplies the whole word (e.g., Golden Face)
+    HealPlayer,       // Restores HP
+    RefundQuery       // Gives back an action point
+}
 
+// Add this enum if it isn't defined somewhere else in your project!
+public enum DiceType { D4, D6, D8, D10, D12, D20 }
+
+[System.Serializable]
+public class DieFace
+{
+    public string faceText;
+    public string altFaceText = "";
+
+    [Header("Standard Upgrades")]
+    public int bonusScore = 0;
+
+    [Header("Special Modifiers")]
+    public DieEffectType specialEffect = DieEffectType.None;
+    public float effectValue = 0f; // Could be a 1.5 multiplier, or 10 HP healed
+
+    public bool playedThisLevel = false;
+    public int timesPlayedThisRun = 0;
+
+    public bool HasSplitFace => !string.IsNullOrEmpty(altFaceText);
+
+    // The NEW modern math method
+    public int GetBaseLetterScore(string textToScore)
+    {
+        int baseScore = 0;
+        if (WordValidator.Instance != null && !string.IsNullOrEmpty(textToScore))
+            baseScore = WordValidator.Instance.GetLetterScore(textToScore[0]);
+        return baseScore + bonusScore;
+    }
+
+    // ==========================================
+    // LEGACY UI FIXES (Overloads)
+    // These ensure your old UI and Draft Cards don't break!
+    // ==========================================
+
+    // If a script calls GetTotalScore() with NO arguments
+    public int GetTotalScore()
+    {
+        return GetBaseLetterScore(faceText);
+    }
+
+    // If a script calls GetTotalScore("A") with a STRING argument
+    public int GetTotalScore(string text)
+    {
+        return GetBaseLetterScore(text);
+    }
+
+    // If a script calls GetTotalScore('A') with a CHAR argument
+    public int GetTotalScore(char text)
+    {
+        return GetBaseLetterScore(text.ToString());
+    }
+
+    // ==========================================
+
+    public void ToggleSplitFace()
+    {
+        if (HasSplitFace)
+        {
+            string temp = faceText;
+            faceText = altFaceText;
+            altFaceText = temp;
+        }
+    }
+}
+
+[System.Serializable]
 public class DieData
 {
-    public DiceType Type;
-    public char CurrentFace;
-    public string PossibleFaces;
-    public int ScoreValue;
+    public string dieName;
+    public DiceType visualShape;
+    public Sprite dieSprite;
+    public GameObject diePrefab;
+
+    public List<DieFace> faces = new List<DieFace>();
+    public DieFace currentFace;
+
+    public void Roll()
+    {
+        if (faces.Count > 0) currentFace = faces[UnityEngine.Random.Range(0, faces.Count)];
+    }
 }
 
 public class DiceDeck : MonoBehaviour
 {
     public static DiceDeck Instance { get; private set; }
 
-    private readonly char[] _d4Vowels = { 'A', 'E', 'I', 'O' };
-    private readonly char[] _d6Standard = { 'A', 'E', 'S', 'T', 'R', 'N' };
-    private readonly char[] _d8Consonant = { 'C', 'D', 'H', 'L', 'M', 'P', 'R', 'T' };
-    private readonly char[] _d20Rare = { 'B', 'F', 'G', 'J', 'K', 'Q', 'V', 'W', 'X', 'Y', 'Z', 'B', 'F', 'H', 'M', 'P', 'V', 'W', 'Y', 'Z' };
-
-    public readonly List<DiceType> startingDeckBlueprint = new();
-
-    public readonly List<DiceType> currentDrawPile = new();
-    public readonly List<DieData> currentHand = new();
+    [Header("Run Data")]
+    public List<DieData> allOwnedDice = new List<DieData>();
+    public List<DieData> currentHand = new List<DieData>();
+    public List<DieData> drawBag = new List<DieData>();
+    public List<DieData> discardPile = new List<DieData>(); // NEW: The Discard Queue!
 
     private void Awake()
     {
@@ -31,83 +109,112 @@ public class DiceDeck : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    public void InitializeStartingDeck()
+    // ==========================================
+    // ASSEMBLES THE DECK FROM SCRIPTABLE OBJECTS
+    // ==========================================
+    public void InitializeStartingDeck(LexiconCharacterSO chosenCharacter)
     {
-        startingDeckBlueprint.Clear();
-        for (int i = 0; i < 8; i++) startingDeckBlueprint.Add(DiceType.D4_Vowel);
-        for (int i = 0; i < 12; i++) startingDeckBlueprint.Add(DiceType.D6_Standard);
-        for (int i = 0; i < 8; i++) startingDeckBlueprint.Add(DiceType.D8_Consonant);
-        for (int i = 0; i < 2; i++) startingDeckBlueprint.Add(DiceType.D20_Rare);
+        allOwnedDice.Clear();
+
+        // 1. Load the Base Set (The standard 6 dice)
+        if (chosenCharacter.baseDiceSet != null)
+        {
+            foreach (LexiconDieSO dieBlueprint in chosenCharacter.baseDiceSet.diceInSet)
+            {
+                allOwnedDice.Add(ForgeDieFromBlueprint(dieBlueprint));
+            }
+        }
+
+        // 2. Load the Class-Specific Special Dice
+        foreach (LexiconDieSO specialDieBlueprint in chosenCharacter.classSpecialDice)
+        {
+            allOwnedDice.Add(ForgeDieFromBlueprint(specialDieBlueprint));
+        }
+
+        Debug.Log($"<color=#00FF00>Dice Deck Assembled: {allOwnedDice.Count} total dice for {chosenCharacter.className}.</color>");
     }
 
+    // Helper method to turn a Blueprint (SO) into active Run Data
+    private DieData ForgeDieFromBlueprint(LexiconDieSO blueprint)
+    {
+        DieData newDie = new DieData();
+        newDie.dieName = blueprint.dieName;
+        newDie.visualShape = blueprint.visualShape;
+        newDie.dieSprite = blueprint.dieSprite; // NEW: Pass the sprite from blueprint to active run data!
+        newDie.diePrefab = blueprint.diePrefab;
+
+        foreach (string faceText in blueprint.defaultFaces)
+        {
+            DieFace newFace = new DieFace();
+            newFace.faceText = faceText;
+            newFace.bonusScore = 0;
+            newFace.playedThisLevel = false;
+            newFace.timesPlayedThisRun = 0;
+
+            newDie.faces.Add(newFace);
+        }
+        return newDie;
+    }
+
+    public void AddNewDie(LexiconDieSO blueprint)
+    {
+        DieData newDie = ForgeDieFromBlueprint(blueprint);
+        allOwnedDice.Add(newDie);
+        discardPile.Add(newDie); // In deckbuilders, newly acquired items go to the discard pile!
+
+        Debug.Log($"<color=#00FF00>New {blueprint.dieName} added to the deck!</color>");
+    }
+
+    // ==========================================
+    // COMBAT LOGIC
+    // ==========================================
     public void SetupEncounterPool()
     {
-        currentDrawPile.Clear();
+        drawBag.Clear();
+        discardPile.Clear();
         currentHand.Clear();
-        currentDrawPile.AddRange(startingDeckBlueprint);
-        ShuffleDrawPile();
-    }
 
-    private void ShuffleDrawPile()
-    {
-        for (int i = 0; i < currentDrawPile.Count; i++)
+        drawBag.AddRange(allOwnedDice);
+
+        foreach (var die in allOwnedDice)
         {
-            DiceType temp = currentDrawPile[i];
-            int randomIndex = Random.Range(i, currentDrawPile.Count);
-            currentDrawPile[i] = currentDrawPile[randomIndex];
-            currentDrawPile[randomIndex] = temp;
+            foreach (var face in die.faces)
+            {
+                face.playedThisLevel = false;
+            }
         }
     }
 
-    public void FillHand(int maxHandSize)
+    public void FillHand(int targetSize)
     {
-        while (currentHand.Count < maxHandSize && currentDrawPile.Count > 0)
+        while (currentHand.Count < targetSize)
         {
-            DiceType nextDie = currentDrawPile[0];
-            currentDrawPile.RemoveAt(0);
-            currentHand.Add(RollDie(nextDie));
+            // If the draw bag is empty, cycle the discard pile back in!
+            if (drawBag.Count == 0)
+            {
+                if (discardPile.Count == 0) break; // We physically have no more dice to draw!
+
+                drawBag.AddRange(discardPile);
+                discardPile.Clear();
+                Debug.Log("<color=#FF8800>Draw bag empty! Shuffling discard pile back into the bag.</color>");
+            }
+
+            // Using UnityEngine.Random to avoid the System.Random ambiguity error
+            int randomIndex = UnityEngine.Random.Range(0, drawBag.Count);
+            DieData drawnDie = drawBag[randomIndex];
+            drawBag.RemoveAt(randomIndex);
+
+            drawnDie.Roll();
+            currentHand.Add(drawnDie);
         }
     }
 
-    private DieData RollDie(DiceType type)
+    public void ReturnToBag(DieData die)
     {
-        char face;
-        string facesStr;
-
-        switch (type)
+        if (currentHand.Contains(die))
         {
-            case DiceType.D4_Vowel: face = _d4Vowels[Random.Range(0, _d4Vowels.Length)]; facesStr = string.Join(",", _d4Vowels); break;
-            case DiceType.D8_Consonant: face = _d8Consonant[Random.Range(0, _d8Consonant.Length)]; facesStr = string.Join(",", _d8Consonant); break;
-            case DiceType.D20_Rare: face = _d20Rare[Random.Range(0, _d20Rare.Length)]; facesStr = string.Join(",", _d20Rare); break;
-            default: face = _d6Standard[Random.Range(0, _d6Standard.Length)]; facesStr = string.Join(",", _d6Standard); break;
+            currentHand.Remove(die);
+            discardPile.Add(die); // Spent dice go to the discard queue, NOT immediately back to the draw bag!
         }
-
-        // CIPHER BOSS FIX: Check if Cipher is active, if so, force score to 1.
-        int scoreVal = WordValidator.Instance.GetLetterScore(face);
-        if (RunManager.Instance != null && RunManager.Instance.activeBossModifier == BossModifier.Cipher)
-        {
-            scoreVal = 1;
-        }
-
-        return new DieData
-        {
-            Type = type,
-            CurrentFace = face,
-            PossibleFaces = facesStr,
-            ScoreValue = scoreVal
-        };
-    }
-
-    public string GetDeckSummary()
-    {
-        int d4 = 0, d6 = 0, d8 = 0, d20 = 0;
-        foreach (var d in startingDeckBlueprint)
-        {
-            if (d == DiceType.D4_Vowel) d4++;
-            else if (d == DiceType.D6_Standard) d6++;
-            else if (d == DiceType.D8_Consonant) d8++;
-            else if (d == DiceType.D20_Rare) d20++;
-        }
-        return $"Total Dice: {startingDeckBlueprint.Count}\n\n- D4 (Vowels): {d4}\n- D6 (Standard): {d6}\n- D8 (Consonants): {d8}\n- D20 (Rare): {d20}";
     }
 }

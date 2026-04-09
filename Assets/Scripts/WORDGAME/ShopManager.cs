@@ -1,134 +1,124 @@
-using System;
-using System.Collections.Generic;
 using UnityEngine;
+using System.Collections.Generic;
 using System.Linq;
-
-public enum ShopType { PreRun, MidRun }
 
 public class ShopItem
 {
     public string ItemName;
     public string Description;
     public int Cost;
-    public Action OnPurchase;
-    public bool IsSoldOut;
+    public Sprite itemIcon;
+    public System.Action OnPurchase;
 }
 
 public class ShopManager : MonoBehaviour
 {
     public static ShopManager Instance { get; private set; }
 
-    public ShopType currentShopType;
-    public readonly List<ShopItem> currentShopItems = new();
+    [Header("Shop Settings")]
+    public List<RelicSO> relicPool;
 
-    private void Awake()
-    {
-        if (Instance == null) Instance = this;
-        else Destroy(gameObject);
-    }
+    private void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); }
 
+    // ==========================================
+    // PRE-RUN SHOP (Called by GameDirector)
+    // ==========================================
     public void GeneratePreRunShop()
     {
-        currentShopType = ShopType.PreRun;
-        currentShopItems.Clear();
+        List<ShopItem> preRunItems = new List<ShopItem>();
 
-        currentShopItems.Add(new ShopItem
+        preRunItems.Add(new ShopItem
         {
-            ItemName = "Query Overclock",
-            Description = "Permanently gain +1 Query to your Max Queries every run.",
-            Cost = 2500,
-            OnPurchase = () => { LexiconSaveManager.Instance.currentData.bonusStartingQueries++; }
+            ItemName = "Firewall Patch",
+            Description = "Heal 25% of your Max HP.",
+            Cost = 150,
+            itemIcon = null,
+            OnPurchase = () => {
+                RunManager.Instance.currentDamageDealt = Mathf.Max(0, (float)(RunManager.Instance.currentDamageDealt - (RunManager.Instance.targetFirewallHP * 0.25f)));
+                WordUIManager.Instance.ForceUpdateHUD();
+            }
         });
 
-        currentShopItems.Add(new ShopItem
-        {
-            ItemName = "Loaded Dice",
-            Description = "Permanently start every run with an extra D20 in your pool.",
-            Cost = 5000,
-            OnPurchase = () => { LexiconSaveManager.Instance.currentData.bonusStartingD20s++; }
-        });
+        PopulateDice(preRunItems, 1, false);
+        PopulateRelics(preRunItems, 2, false);
 
-        WordUIManager.Instance.OpenShopUI("BLACK MARKET (Permanent Upgrades)", LexiconSaveManager.Instance.currentData.dataCores, "Data Cores", currentShopItems);
+        WordUIManager.Instance.OpenShopUI("PRE-RUN BLACK MARKET", RunManager.Instance.currentCredits, "CR", preRunItems);
     }
 
-    public void GenerateMidRunShop()
+    // ==========================================
+    // COMBINED MARKET EXTRACTOR (Called by RunManager)
+    // ==========================================
+    public List<ShopItem> GetMarketItems(bool everythingIsFree)
     {
-        currentShopType = ShopType.MidRun;
-        currentShopItems.Clear();
+        List<ShopItem> marketItems = new List<ShopItem>();
 
-        // 1. Always offer a heal
-        currentShopItems.Add(new ShopItem
+        marketItems.Add(new ShopItem
         {
-            ItemName = "Heal Node",
-            Description = "Instantly restore +2 Queries for the upcoming Mainframe.",
-            Cost = 300,
+            ItemName = "Reboot Cycle",
+            Description = "Restore +2 Queries for the upcoming Mainframe.",
+            Cost = everythingIsFree ? 0 : 300,
+            itemIcon = null,
             OnPurchase = () => { RunManager.Instance.queriesRemaining += 2; WordUIManager.Instance.ForceUpdateHUD(); }
         });
 
-        // 2. Offer 2 Random Relics the player doesn't have yet
-        List<Relic> availableRelics = RelicLibrary.Instance.AllRelics.Keys
-            .Where(r => !RunManager.Instance.activeRelics.Contains(r)).ToList();
+        PopulateDice(marketItems, 1, everythingIsFree);
+        PopulateRelics(marketItems, 1, everythingIsFree);
 
-        // Shuffle
-        for (int i = 0; i < availableRelics.Count; i++)
-        {
-            Relic temp = availableRelics[i];
-            int r = UnityEngine.Random.Range(i, availableRelics.Count);
-            availableRelics[i] = availableRelics[r];
-            availableRelics[r] = temp;
-        }
-
-        for (int i = 0; i < 2 && i < availableRelics.Count; i++)
-        {
-            Relic relicToSell = availableRelics[i];
-            RelicData data = RelicLibrary.Instance.AllRelics[relicToSell];
-
-            currentShopItems.Add(new ShopItem
-            {
-                ItemName = $"[RELIC] {data.Name}",
-                Description = data.Description,
-                Cost = data.Cost,
-                OnPurchase = () => { RunManager.Instance.activeRelics.Add(relicToSell); }
-            });
-        }
-
-        WordUIManager.Instance.OpenShopUI("TERMINAL NODE (Mid-Run Shop)", RunManager.Instance.currentCredits, "Credits", currentShopItems);
+        return marketItems;
     }
 
-    public void TryBuyItem(ShopItem item, GameObject buttonUI)
+    // ==========================================
+    // POOL POPULATION LOGIC
+    // ==========================================
+    private void PopulateDice(List<ShopItem> targetList, int count, bool isFree)
     {
-        if (item.IsSoldOut) return;
-
-        bool success = false;
-        if (currentShopType == ShopType.MidRun)
+        if (RunManager.Instance.activeCharacter != null && RunManager.Instance.activeCharacter.baseDiceSet != null)
         {
-            if (RunManager.Instance.currentCredits >= item.Cost)
+            var dicePool = RunManager.Instance.activeCharacter.baseDiceSet.diceInSet;
+            if (dicePool.Count > 0)
             {
-                RunManager.Instance.currentCredits -= item.Cost;
-                success = true;
+                for (int i = 0; i < count; i++)
+                {
+                    LexiconDieSO randomDieBlueprint = dicePool[UnityEngine.Random.Range(0, dicePool.Count)];
+                    targetList.Add(new ShopItem
+                    {
+                        ItemName = randomDieBlueprint.dieName,
+                        Description = "Add a completely new die to your draw bag.",
+                        Cost = isFree ? 0 : 450,
+                        itemIcon = randomDieBlueprint.dieSprite,
+                        OnPurchase = () => {
+                            DiceDeck.Instance.AddNewDie(randomDieBlueprint);
+                            WordUIManager.Instance.ForceUpdateHUD();
+                        }
+                    });
+                }
             }
         }
-        else
-        {
-            if (LexiconSaveManager.Instance.currentData.dataCores >= item.Cost)
-            {
-                LexiconSaveManager.Instance.currentData.dataCores -= item.Cost;
-                LexiconSaveManager.Instance.SaveGame();
-                success = true;
-            }
-        }
+    }
 
-        if (success)
+    private void PopulateRelics(List<ShopItem> targetList, int count, bool isFree)
+    {
+        // FIX: Removed the LexiconSaveManager.IsUnlocked check so you can actually test them!
+        var availableRelics = relicPool
+            .Where(r => !RunManager.Instance.activeRelics.Contains(r))
+            .OrderBy(x => UnityEngine.Random.value)
+            .Take(count)
+            .ToList();
+
+        foreach (var relic in availableRelics)
         {
-            item.OnPurchase?.Invoke();
-            item.IsSoldOut = true;
-            WordUIManager.Instance.MarkShopItemSold(buttonUI);
-            int newBalance = currentShopType == ShopType.MidRun ? RunManager.Instance.currentCredits : LexiconSaveManager.Instance.currentData.dataCores;
-            WordUIManager.Instance.UpdateShopBalance(newBalance);
-        }
-        else
-        {
-            WordUIManager.Instance.LogError("Insufficient funds for this transaction.");
+            targetList.Add(new ShopItem
+            {
+                ItemName = relic.relicName,
+                Description = relic.description,
+                Cost = isFree ? 0 : relic.baseCost,
+                itemIcon = null,
+                OnPurchase = () => {
+                    RunManager.Instance.activeRelics.Add(relic);
+                    relic.OnEquip();
+                    WordUIManager.Instance.ForceUpdateHUD();
+                }
+            });
         }
     }
 }

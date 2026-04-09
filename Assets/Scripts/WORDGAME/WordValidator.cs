@@ -6,7 +6,12 @@ public class WordValidator : MonoBehaviour
 {
     public static WordValidator Instance { get; private set; }
 
-    // Tracks how many times a word was played THIS run to check against burn limits
+    [Header("Validation Data")]
+    [Tooltip("Drag a standard valid word list text file here (e.g., Scrabble TWL06.txt)")]
+    public TextAsset dictionaryFile;
+
+    // HashSet provides O(1) instant lookup times for tens of thousands of words
+    private readonly HashSet<string> _validWords = new(System.StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _wordsPlayedThisRun = new(System.StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<char, int> _letterScores = new()
@@ -21,23 +26,80 @@ public class WordValidator : MonoBehaviour
     {
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
+
+        LoadDictionary();
     }
 
+    /// <summary>
+    /// Loads the master list of valid words into memory for instant validation.
+    /// Safely handles both clean word lists and frequency lists (like Norvig's count_1w.txt).
+    /// </summary>
+    private void LoadDictionary()
+    {
+        if (dictionaryFile == null)
+        {
+            Debug.LogWarning("No Dictionary File assigned to WordValidator! Validation is running in failsafe mode.");
+            return;
+        }
+
+        string[] lines = dictionaryFile.text.Split(new[] { '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+        foreach (string line in lines)
+        {
+            string cleanWord = line.Trim();
+
+            // If the file is tab-separated or space-separated (like count_1w.txt), grab ONLY the word
+            if (cleanWord.Contains('\t'))
+            {
+                cleanWord = cleanWord.Split('\t')[0];
+            }
+            else if (cleanWord.Contains(' '))
+            {
+                cleanWord = cleanWord.Split(' ')[0];
+            }
+
+            // Optional: Ensure no numbers snuck in
+            bool isAlpha = true;
+            foreach (char c in cleanWord) { if (!char.IsLetter(c)) { isAlpha = false; break; } }
+
+            if (isAlpha && cleanWord.Length > 0)
+            {
+                _validWords.Add(cleanWord.ToUpper());
+            }
+        }
+        Debug.Log($"<color=#00FF00>WordValidator Online: {_validWords.Count} valid words secured in memory.</color>");
+    }
+
+    /// <summary>
+    /// Checks if a spelled string exists in the official valid word list.
+    /// </summary>
+    public bool IsValidWord(string word)
+    {
+        // Failsafe: if the developer forgot to attach the text file, allow everything to prevent softlocking the game
+        if (_validWords.Count == 0) return true;
+
+        return _validWords.Contains(word.ToUpper());
+    }
+
+    /// <summary>
+    /// Checks if the word has already reached its play limit for the current run.
+    /// </summary>
     public bool IsWordBurned(string word)
     {
         string upper = word.ToUpper();
-
         _wordsPlayedThisRun.TryGetValue(upper, out int playsThisRun);
 
         int allowedPlays = 1;
         if (LexiconSaveManager.Instance != null && LexiconSaveManager.Instance.GetWordPlayCount(upper) >= LexiconSaveManager.Instance.favoriteThreshold)
         {
-            allowedPlays = 2;
+            allowedPlays = 2; // Favorite words can be played twice!
         }
 
         return playsThisRun >= allowedPlays;
     }
 
+    /// <summary>
+    /// Records a word as played during the current run.
+    /// </summary>
     public void BurnWord(string word)
     {
         string upper = word.ToUpper();
