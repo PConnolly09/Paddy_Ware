@@ -28,6 +28,10 @@ public class WordUIManager : MonoBehaviour
     [Header("Transient Messages")]
     public TextMeshProUGUI transientMessageText;
 
+    [Header("Hover Tooltip Panel")]
+    public GameObject hoverTooltipPanel;
+    public TextMeshProUGUI hoverTooltipText;
+
     [Header("Scoring Dashboard (Right Panel)")]
     public GameObject scoringDashboardPanel;
     public TextMeshProUGUI dashWordText;
@@ -59,6 +63,17 @@ public class WordUIManager : MonoBehaviour
     private Dictionary<GameObject, Queue<DieUI>> _diePool = new Dictionary<GameObject, Queue<DieUI>>();
 
     private void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); }
+
+    private void Update()
+    {
+        // Make the tooltip smoothly follow the mouse cursor when active
+        if (hoverTooltipPanel != null && hoverTooltipPanel.activeSelf)
+        {
+            Vector2 mousePos = Input.mousePosition;
+            // Offset slightly up and to the right so the cursor doesn't cover the text
+            hoverTooltipPanel.transform.position = mousePos + new Vector2(15f, 15f);
+        }
+    }
 
     // ==========================================
     // COMBAT VISUALS & HUD
@@ -175,12 +190,18 @@ public class WordUIManager : MonoBehaviour
     // ==========================================
     // NEW: FIXED SCORING DASHBOARD ANIMATION
     // ==========================================
+    // ==========================================
+    // UPDATED: SCORING DASHBOARD ANIMATION
+    // ==========================================
     public IEnumerator AnimateScoringSequence(RunManager.ScoreBreakdown bd)
     {
         if (scoringDashboardPanel != null) scoringDashboardPanel.SetActive(true);
 
         // Reset all fields to blank or "calculating" state
-        if (dashWordText != null) dashWordText.text = $"INCANTING: <color=#00FFFF>{bd.word.ToUpper()}</color>";
+        // NEW: Injecting the Parts of Speech (PoS) directly under the word!
+        if (dashWordText != null)
+            dashWordText.text = $"INCANTING: <color=#00FFFF>{bd.word.ToUpper()}</color>\n<size=60%><color=#AAAAAA>[ {bd.pos.ToUpper()} ]</color></size>";
+
         if (dashBaseScoreText != null) dashBaseScoreText.text = "Base Score: ...";
         if (dashHitsMultText != null) dashHitsMultText.text = "Hits Mult: ...";
         if (dashRarityMultText != null) dashRarityMultText.text = "Rarity Mult: ...";
@@ -212,7 +233,7 @@ public class WordUIManager : MonoBehaviour
         }
         yield return new WaitForSeconds(0.3f);
 
-        // 4. Global/Relic Multipliers
+        // 4. Global/Relic Multipliers (This already triggers your Relic logs dynamically!)
         if (dashRelicMultText != null)
         {
             string globalConcat = string.Join(" ", bd.globalLogs).Replace("\n", "");
@@ -229,8 +250,23 @@ public class WordUIManager : MonoBehaviour
 
         yield return new WaitForSeconds(1.5f);
 
-        // We leave the panel visible until they take their next action!
+        // Send the math to the RunManager to update the HP bar
         RunManager.Instance.ResolveSubmission(bd);
+
+        // NEW: Non-Lethal Action Summary
+        // If the Firewall is still alive, post a concise summary to the Transient Log for quick reference!
+        if (RunManager.Instance.currentDamageDealt < RunManager.Instance.targetFirewallHP)
+        {
+            // Extracts just the name of the rarity (e.g. "Rare Text") by stripping the multiplier info
+            string cleanRarity = "Common";
+            if (bd.rarityLogs.Count > 0)
+            {
+                int colonIndex = bd.rarityLogs[0].IndexOf(':');
+                if (colonIndex > 0) cleanRarity = bd.rarityLogs[0].Substring(0, colonIndex);
+            }
+
+            ShowTransientMessage($"<size=80%><color=#AAAAAA>LAST CAST:</color> {bd.word.ToUpper()} \n<color=#00FF00>{bd.totalDamage:N0} DMG</color> {cleanRarity}</size>");
+        }
     }
 
     // ==========================================
@@ -308,6 +344,22 @@ public class WordUIManager : MonoBehaviour
             else if (die != null) Destroy(die.gameObject); // Failsafe for orphaned UI
         }
         _activeDiceOnBoard.Clear();
+    }
+    // ==========================================
+    // DICE HOVER TOOLTIPS
+    // ==========================================
+    public void ShowHoverTooltip(string tooltipData)
+    {
+        if (hoverTooltipPanel != null && hoverTooltipText != null)
+        {
+            hoverTooltipPanel.SetActive(true);
+            hoverTooltipText.text = tooltipData;
+        }
+    }
+
+    public void HideHoverTooltip()
+    {
+        if (hoverTooltipPanel != null) hoverTooltipPanel.SetActive(false);
     }
 
     // ==========================================

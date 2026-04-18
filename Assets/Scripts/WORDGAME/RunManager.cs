@@ -22,6 +22,17 @@ public class RunManager : MonoBehaviour
     public int rareWordStreak = 0;
     public float currentObscurityMultiplier = 0f;
 
+    // ==========================================
+    // STREAK SYSTEM VARIABLES
+    // ==========================================
+    private int _lastWordLength = 0;
+    private string _lastWordPOS = "";
+
+    public int echoStreak = 0;       // Same Length
+    public int chaosStreak = 0;      // Different Length
+    public int syntaxStreak = 0;     // Same POS
+    public int diversityStreak = 0;  // Different POS
+
     [Header("The Firewall")]
     public double targetFirewallHP;
     public double currentDamageDealt;
@@ -90,6 +101,14 @@ public class RunManager : MonoBehaviour
         mostUniqueWord = "NONE";
         lowestWikiHits = long.MaxValue;
 
+        // NEW: Reset all streaks for the new run!
+        _lastWordLength = 0;
+        _lastWordPOS = "";
+        echoStreak = 0;
+        chaosStreak = 0;
+        syntaxStreak = 0;
+        diversityStreak = 0;
+
         letterUsageCount.Clear();
         activeRelics.Clear();
 
@@ -119,44 +138,26 @@ public class RunManager : MonoBehaviour
 
     public void GenerateEncounter()
     {
-        if (currentLevel > settings.maxLevel)
-        {
-            WordUIManager.Instance.ShowTransientMessage("<color=#00FF00>MAXIMUM LEVEL REACHED. YOU WIN!</color>");
-            settings.maxLevel += 50;
-        }
-
-        isBossLevel = currentLevel % 5 == 0;
-        activeBossModifier = BossModifier.None;
-        activeBossDescription = "";
-
-        double hpCalc = settings.baseFirewallHP * Mathf.Pow(settings.hpScaleMultiplier, currentLevel - 1);
-        if (activeCharacter != null) hpCalc -= activeCharacter.bonusStartingHP;
-
-        if (isBossLevel)
-        {
-            activeBossModifier = (BossModifier)UnityEngine.Random.Range(1, 5);
-            switch (activeBossModifier)
-            {
-                case BossModifier.Titan: hpCalc *= settings.titanBossHpMultiplier; activeBossDescription = "TITAN: Massive HP pool."; break;
-                case BossModifier.Cipher: hpCalc *= settings.standardBossHpMultiplier; activeBossDescription = "CIPHER: All letters score 1."; break;
-                case BossModifier.Virus: hpCalc *= settings.standardBossHpMultiplier; activeBossDescription = "VIRUS: Relics disabled."; break;
-                case BossModifier.Drain: hpCalc *= settings.standardBossHpMultiplier; activeBossDescription = "DRAIN: Resources halved."; break;
-            }
-        }
-
-        targetFirewallHP = System.Math.Max(10, hpCalc);
-        currentDamageDealt = 0;
-
+        // 1. Give the player their starting resources for the entire run
         int bQueries = settings.startingQueries + LexiconSaveManager.Instance.currentData.bonusStartingQueries;
         if (activeCharacter != null) bQueries += activeCharacter.bonusQueries;
 
-        queriesRemaining = (activeBossModifier == BossModifier.Drain) ? Mathf.Max(1, bQueries - 2) : bQueries;
+        queriesRemaining = bQueries;
         discardsRemaining = settings.startingDiscards;
         rerollsRemaining = settings.startingRerolls;
 
+        // 2. It is Level 1, so we safely start at 0 damage
+        currentDamageDealt = 0;
+
+        // 3. Setup the physical dice bag for the run
         DiceDeck.Instance.SetupEncounterPool();
+
+        // 4. Generate the Level 1 Boss HP
+        GenerateNextFirewall();
+
         StartTurn();
     }
+
 
     public void StartTurn()
     {
@@ -221,33 +222,50 @@ public class RunManager : MonoBehaviour
 
         float wordMultiplierFromDice = 1.0f;
         int totalBaseScore = 0;
+        List<DieData> explodingDice = new List<DieData>(); // Track what blows up!
 
+        // 1. Heat up the used dice
         foreach (DieData die in usedDice)
         {
             die.currentFace.playedThisLevel = true;
             die.currentFace.timesPlayedThisRun++;
 
+            // INCREASE STRESS
+            die.consecutivePlays++;
+
             float letterScore = die.currentFace.GetBaseLetterScore(die.currentFace.faceText);
 
-            switch (die.currentFace.specialEffect)
-            {
-                case DieEffectType.LetterMultiplier:
-                    letterScore *= die.currentFace.effectValue;
-                    break;
-                case DieEffectType.WordMultiplier:
-                    wordMultiplierFromDice *= die.currentFace.effectValue;
-                    break;
-                case DieEffectType.HealPlayer:
-                    currentDamageDealt = System.Math.Max(0, currentDamageDealt - die.currentFace.effectValue);
-                    WordUIManager.Instance.ShowTransientMessage($"<color=#00FF00>SEAL MENDED: {die.currentFace.effectValue} HP</color>");
-                    break;
-                case DieEffectType.RefundQuery:
-                    queriesRemaining += (int)die.currentFace.effectValue;
-                    WordUIManager.Instance.ShowTransientMessage($"<color=#00FFFF>FOCUS REFUNDED!</color>");
-                    break;
-            }
+            // APPLY OVERLOAD MULTIPLIER
+            if (die.consecutivePlays == 2) letterScore *= 1.5f;      // Warm
+            else if (die.consecutivePlays == 3) letterScore *= 2.0f; // Cracked
+            else if (die.consecutivePlays >= 4) letterScore *= 3.0f; // Exploding!
+
+            // [Keep your existing switch statement for special effects here...]
 
             totalBaseScore += Mathf.RoundToInt(letterScore);
+
+            // Mark for destruction if it went over the limit
+            if (die.consecutivePlays > die.maxStress)
+            {
+                explodingDice.Add(die);
+            }
+        }
+
+        // 2. Cool down the unused dice in your hand/bag
+        foreach (DieData die in DiceDeck.Instance.allOwnedDice)
+        {
+            if (!usedDice.Contains(die))
+            {
+                // If it wasn't played this turn, it cools off completely!
+                die.consecutivePlays = 0;
+            }
+        }
+
+        // 3. Process Explosions
+        foreach (DieData explodingDie in explodingDice)
+        {
+            DiceDeck.Instance.allOwnedDice.Remove(explodingDie);
+            WordUIManager.Instance.ShowTransientMessage($"<color=#FF0000>OVERLOAD! {explodingDie.dieName} SHATTERED!</color>");
         }
 
         if (LexiconDatabase.Instance != null && LexiconDatabase.Instance.TryGetWordData(spelledWord, out LexiconDatabase.CachedWordData cachedData))
@@ -289,7 +307,7 @@ public class RunManager : MonoBehaviour
         ScoreBreakdown bd = new ScoreBreakdown
         {
             word = word,
-            pos = string.Join(", ", posList),
+            pos = string.Join(", ", posList).ToUpper(),
             tags = tags,
             baseScore = baseScore,
             finalBaseScore = baseScore,
@@ -332,6 +350,79 @@ public class RunManager : MonoBehaviour
         {
             foreach (RelicSO relic in activeRelics) relic.OnPostMath(bd);
         }
+        // ==========================================
+        // STREAK CALCULATIONS
+        // ==========================================
+        if (_lastWordLength > 0)
+        {
+            // 1. Length Streaks
+            if (word.Length == _lastWordLength)
+            {
+                echoStreak++;
+                chaosStreak = 0;
+            }
+            else
+            {
+                chaosStreak++;
+                echoStreak = 0;
+            }
+
+            // 2. POS Streaks
+            if (bd.pos == _lastWordPOS && !string.IsNullOrEmpty(bd.pos))
+            {
+                syntaxStreak++;
+                diversityStreak = 0;
+            }
+            else
+            {
+                diversityStreak++;
+                syntaxStreak = 0;
+            }
+        }
+        else
+        {
+            // First word played in the run primes the streaks!
+            echoStreak = 1;
+            chaosStreak = 1;
+            syntaxStreak = 1;
+            diversityStreak = 1;
+        }
+
+        // ==========================================
+        // APPLY STREAK MULTIPLIERS (+0.2x per streak level)
+        // ==========================================
+        float streakBonus = 0f;
+
+        if (echoStreak > 1)
+        {
+            streakBonus += (echoStreak - 1) * 0.2f;
+            bd.globalLogs.Add($"<color=#00FFFF>ECHO STREAK {echoStreak} (+{streakBonus}x)</color>");
+        }
+        else if (chaosStreak > 1)
+        {
+            streakBonus += (chaosStreak - 1) * 0.2f;
+            bd.globalLogs.Add($"<color=#FF5500>CHAOS STREAK {chaosStreak} (+{streakBonus}x)</color>");
+        }
+
+        if (syntaxStreak > 1)
+        {
+            float posBonus = (syntaxStreak - 1) * 0.2f;
+            streakBonus += posBonus;
+            bd.globalLogs.Add($"<color=#00FF00>SYNTAX STREAK {syntaxStreak} (+{posBonus}x)</color>");
+        }
+        else if (diversityStreak > 1)
+        {
+            float posBonus = (diversityStreak - 1) * 0.2f;
+            streakBonus += posBonus;
+            bd.globalLogs.Add($"<color=#FF00FF>DIVERSITY STREAK {diversityStreak} (+{posBonus}x)</color>");
+        }
+
+        // Apply the combined streak bonus to the global multiplier!
+        bd.globalMult += streakBonus;
+
+        // Save the current word's stats for the NEXT turn
+        _lastWordLength = word.Length;
+        _lastWordPOS = bd.pos;
 
         bd.totalDamage = (double)bd.finalBaseScore * bd.hitMultiplier * bd.rarityMult * bd.globalMult;
 
@@ -359,31 +450,104 @@ public class RunManager : MonoBehaviour
 
     public void ResolveSubmission(ScoreBreakdown bd)
     {
-        queriesRemaining--;
+        queriesRemaining--; // Spend the Focus
         totalRunScore += bd.totalDamage;
+        currentDamageDealt += bd.totalDamage;
 
+        // Return used dice to the discard pile
         foreach (DieData die in bd.usedDice)
             DiceDeck.Instance.ReturnToBag(die);
 
-        currentDamageDealt += bd.totalDamage;
-        UpdateHUD();
-
-        if (currentDamageDealt >= targetFirewallHP) TriggerVictory();
-        else if (queriesRemaining <= 0) TriggerDefeat();
-        else StartTurn();
+        // CHECK FOR LEVEL UP (Continuous Flow!)
+        if (currentDamageDealt >= targetFirewallHP)
+        {
+            TriggerLevelUp();
+        }
+        else if (queriesRemaining <= 0)
+        {
+            TriggerDefeat();
+        }
+        else
+        {
+            // Keep the turn going
+            UpdateHUD();
+            StartTurn();
+        }
     }
 
-    private void TriggerVictory()
+    private void TriggerLevelUp()
     {
-        currentState = RunState.Shopping;
-        currentCredits += (100 + (queriesRemaining * 50));
         firewallsBreached++;
+        currentLevel++;
 
-        if (currentLevel >= 5)
-            LexiconSaveManager.Instance.UnlockRelic("UNLOCK_BOSS_KILLER", "Boss Killer");
+        // Calculate overkill damage to carry over into the next firewall!
+        double overkill = currentDamageDealt - targetFirewallHP;
 
-        GenerateCombinedMarket();
+        // Grant rewards for beating the level
+        int dustEarned = 100 + (queriesRemaining * 10);
+        currentCredits += dustEarned;
+
+        // Optionally grant +1 or +2 Focus (Queries) to keep them alive
+        queriesRemaining += 2;
+
+        // Generate the Next Level's Firewall Stats
+        GenerateNextFirewall();
+
+        // Apply the overkill damage to the new Firewall
+        currentDamageDealt = overkill;
+
+        // Visual feedback without stopping the game
+        WordUIManager.Instance.ShowTransientMessage($"<size=120%><color=#FFD700>SEAL BREACHED! CHAPTER {currentLevel}</color></size>\n<color=#00FF00>+{dustEarned} Dust | +2 Focus</color>");
+
+        // Check if it's time for the Cycle Shop (Every 5 levels)
+        if (currentLevel % 5 == 1 && currentLevel > 1)
+        {
+            // We will wire up the 5-round shop here later!
+            WordUIManager.Instance.ShowTransientMessage("<color=#FF00FF>THE SCRIPTORIUM HAS CYCLED...</color>");
+        }
+
+        UpdateHUD();
+        StartTurn(); // Keep drawing and playing!
     }
+
+    public void GenerateNextFirewall()
+    {
+        // 1. Infinite Scaling Check
+        if (currentLevel > settings.maxLevel)
+        {
+            settings.maxLevel += 50;
+        }
+
+        // 2. Boss Modifier Logic
+        isBossLevel = currentLevel % 5 == 0;
+        activeBossModifier = BossModifier.None;
+        activeBossDescription = "";
+
+        // 3. HP Math
+        double hpCalc = settings.baseFirewallHP * Mathf.Pow(settings.hpScaleMultiplier, currentLevel - 1);
+        if (activeCharacter != null) hpCalc -= activeCharacter.bonusStartingHP;
+
+        if (isBossLevel)
+        {
+            activeBossModifier = (BossModifier)UnityEngine.Random.Range(1, 5);
+            switch (activeBossModifier)
+            {
+                case BossModifier.Titan: hpCalc *= settings.titanBossHpMultiplier; activeBossDescription = "TITAN: Massive HP pool."; break;
+                case BossModifier.Cipher: hpCalc *= settings.standardBossHpMultiplier; activeBossDescription = "CIPHER: All letters score 1."; break;
+                case BossModifier.Virus: hpCalc *= settings.standardBossHpMultiplier; activeBossDescription = "VIRUS: Relics disabled."; break;
+
+                case BossModifier.Drain:
+                    hpCalc *= settings.standardBossHpMultiplier;
+                    activeBossDescription = "DRAIN: Focus sapped!";
+                    // Dynamic mid-run penalty!
+                    queriesRemaining = Mathf.Max(1, queriesRemaining - 2);
+                    break;
+            }
+        }
+
+        targetFirewallHP = System.Math.Max(10, hpCalc);
+    }
+
 
     private void TriggerDefeat()
     {
