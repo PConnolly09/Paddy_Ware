@@ -87,12 +87,6 @@ public class DieData
     public List<DieFace> faces = new List<DieFace>();
     public DieFace currentFace;
 
-    // ==========================================
-    // NEW: THE OVERLOAD MECHANIC
-    // ==========================================
-    public int consecutivePlays = 0;
-    public int maxStress = 3; // 0=Safe, 1=Warm, 2=Cracked, 3=Critical, 4=EXPLOSION
-
     public void Roll()
     {
         if (faces.Count > 0) currentFace = faces[UnityEngine.Random.Range(0, faces.Count)];

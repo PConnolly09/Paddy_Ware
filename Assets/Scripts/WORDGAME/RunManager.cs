@@ -33,6 +33,11 @@ public class RunManager : MonoBehaviour
     public int syntaxStreak = 0;     // Same POS
     public int diversityStreak = 0;  // Different POS
 
+    // ==========================================
+    // LEVEL TRACKING
+    // ==========================================
+    private List<DieData> _dicePlayedThisLevel = new List<DieData>();
+
     [Header("The Firewall")]
     public double targetFirewallHP;
     public double currentDamageDealt;
@@ -77,6 +82,22 @@ public class RunManager : MonoBehaviour
     public class DraftUpgradeOption { public DieData die; public DieFace face; public int bonusAmount; }
     public class DraftMutateOption { public DieData die; public DieFace face; public string newFaceText; public bool isSplitFace; }
 
+    public class RunLinguisticHistory
+    {
+        // Tracks every word length you've successfully played this run
+        public HashSet<int> wordLengthsPlayed = new HashSet<int>();
+
+        // Tracks Parts of Speech (NOUN, VERB, etc.)
+        public HashSet<string> partsOfSpeechPlayed = new HashSet<string>();
+
+        // Special linguistic quirks
+        public bool hasPlayedPalindrome = false;
+        public bool hasPlayedAnagram = false;
+        public int highestBaseScore = 0;
+    }
+
+    public RunLinguisticHistory currentRunHistory = new RunLinguisticHistory();
+
     private void Awake()
     {
         if (Instance == null) Instance = this;
@@ -111,6 +132,7 @@ public class RunManager : MonoBehaviour
 
         letterUsageCount.Clear();
         activeRelics.Clear();
+        _dicePlayedThisLevel.Clear();
 
         if (settings != null && settings.lengthMultipliers != null)
         {
@@ -197,11 +219,12 @@ public class RunManager : MonoBehaviour
     // 1. THE SUBMISSION ENTRY POINT
     public void SubmitWord(string spelledWord, List<DieData> usedDice)
     {
-        // ADD THIS LINE: It forces the word to uppercase and deletes anything that isn't a letter, apostrophe, or dash!
+        // 1. Sanitize the input
         spelledWord = System.Text.RegularExpressions.Regex.Replace(spelledWord.ToUpper(), @"[^A-Z\'\-]", "");
 
         if (currentState != RunState.Drafting) return;
-        // If it's gibberish, boot it back to the hand without spending a Query!
+
+        // 2. Reject gibberish without spending a turn
         if (!WordValidator.Instance.IsValidWord(spelledWord))
         {
             WordUIManager.Instance.ShowTransientMessage($"<color=#FF0000>INVALID STRING: {spelledWord}</color>");
@@ -210,7 +233,6 @@ public class RunManager : MonoBehaviour
         }
 
         currentState = RunState.Resolving;
-
         WordValidator.Instance.BurnWord(spelledWord);
         totalWordsEntered++;
 
@@ -220,63 +242,41 @@ public class RunManager : MonoBehaviour
             else letterUsageCount[c] = 1;
         }
 
+        // Inside SubmitWord...
         float wordMultiplierFromDice = 1.0f;
         int totalBaseScore = 0;
-        List<DieData> explodingDice = new List<DieData>(); // Track what blows up!
 
-        // 1. Heat up the used dice
         foreach (DieData die in usedDice)
         {
             die.currentFace.playedThisLevel = true;
             die.currentFace.timesPlayedThisRun++;
 
-            // INCREASE STRESS
-            die.consecutivePlays++;
-
             float letterScore = die.currentFace.GetBaseLetterScore(die.currentFace.faceText);
 
-            // APPLY OVERLOAD MULTIPLIER
-            if (die.consecutivePlays == 2) letterScore *= 1.5f;      // Warm
-            else if (die.consecutivePlays == 3) letterScore *= 2.0f; // Cracked
-            else if (die.consecutivePlays >= 4) letterScore *= 3.0f; // Exploding!
-
-            // [Keep your existing switch statement for special effects here...]
-
+            switch (die.currentFace.specialEffect)
+            {
+                case DieEffectType.LetterMultiplier: letterScore *= die.currentFace.effectValue; break;
+                case DieEffectType.WordMultiplier: wordMultiplierFromDice *= die.currentFace.effectValue; break;
+                case DieEffectType.HealPlayer:
+                    currentDamageDealt = System.Math.Max(0, currentDamageDealt - die.currentFace.effectValue);
+                    WordUIManager.Instance.ShowTransientMessage($"<color=#00FF00>SEAL MENDED: {die.currentFace.effectValue} HP</color>");
+                    break;
+                case DieEffectType.RefundQuery:
+                    queriesRemaining += (int)die.currentFace.effectValue;
+                    WordUIManager.Instance.ShowTransientMessage($"<color=#00FFFF>FOCUS REFUNDED!</color>");
+                    break;
+            }
             totalBaseScore += Mathf.RoundToInt(letterScore);
-
-            // Mark for destruction if it went over the limit
-            if (die.consecutivePlays > die.maxStress)
-            {
-                explodingDice.Add(die);
-            }
         }
 
-        // 2. Cool down the unused dice in your hand/bag
-        foreach (DieData die in DiceDeck.Instance.allOwnedDice)
-        {
-            if (!usedDice.Contains(die))
-            {
-                // If it wasn't played this turn, it cools off completely!
-                die.consecutivePlays = 0;
-            }
-        }
-
-        // 3. Process Explosions
-        foreach (DieData explodingDie in explodingDice)
-        {
-            DiceDeck.Instance.allOwnedDice.Remove(explodingDie);
-            WordUIManager.Instance.ShowTransientMessage($"<color=#FF0000>OVERLOAD! {explodingDie.dieName} SHATTERED!</color>");
-        }
-
+        // 6. Push to Math
         if (LexiconDatabase.Instance != null && LexiconDatabase.Instance.TryGetWordData(spelledWord, out LexiconDatabase.CachedWordData cachedData))
         {
-            // Successfully passes the new dieWordMultiplier down the pipeline
             ExecuteDamageMath(spelledWord, new List<string> { cachedData.pos }, cachedData.tags, totalBaseScore, cachedData.hits, cachedData.frequency, usedDice, wordMultiplierFromDice);
         }
         else
         {
             WordUIManager.Instance.ShowTransientMessage($"<color=#FF8800>UNSEALED KNOWLEDGE.\nCONSULTING THE ARCHIVES...</color>");
-            // Successfully passes the new dieWordMultiplier to the Coroutine
             StartCoroutine(FetchExternalDataAndExecute(spelledWord, totalBaseScore, usedDice, wordMultiplierFromDice));
         }
     }
@@ -318,6 +318,12 @@ public class RunManager : MonoBehaviour
             globalMult = 1.0
         };
 
+        // Log the dice faces to the dashboard without the Overload colors
+        foreach (DieData die in usedDice)
+        {
+            bd.baseLogs.Add($"[{die.currentFace.faceText}]");
+        }
+
         if (activeBossModifier == BossModifier.Cipher)
         {
             bd.finalBaseScore = word.Length;
@@ -350,77 +356,36 @@ public class RunManager : MonoBehaviour
         {
             foreach (RelicSO relic in activeRelics) relic.OnPostMath(bd);
         }
+
         // ==========================================
         // STREAK CALCULATIONS
         // ==========================================
         if (_lastWordLength > 0)
         {
-            // 1. Length Streaks
-            if (word.Length == _lastWordLength)
-            {
-                echoStreak++;
-                chaosStreak = 0;
-            }
-            else
-            {
-                chaosStreak++;
-                echoStreak = 0;
-            }
+            if (word.Length == _lastWordLength) { echoStreak++; chaosStreak = 0; }
+            else { chaosStreak++; echoStreak = 0; }
 
-            // 2. POS Streaks
-            if (bd.pos == _lastWordPOS && !string.IsNullOrEmpty(bd.pos))
-            {
-                syntaxStreak++;
-                diversityStreak = 0;
-            }
-            else
-            {
-                diversityStreak++;
-                syntaxStreak = 0;
-            }
+            if (bd.pos == _lastWordPOS && !string.IsNullOrEmpty(bd.pos)) { syntaxStreak++; diversityStreak = 0; }
+            else { diversityStreak++; syntaxStreak = 0; }
         }
         else
         {
-            // First word played in the run primes the streaks!
-            echoStreak = 1;
-            chaosStreak = 1;
-            syntaxStreak = 1;
-            diversityStreak = 1;
+            echoStreak = 1; chaosStreak = 1; syntaxStreak = 1; diversityStreak = 1;
         }
 
         // ==========================================
-        // APPLY STREAK MULTIPLIERS (+0.2x per streak level)
+        // APPLY STREAK MULTIPLIERS
         // ==========================================
         float streakBonus = 0f;
 
-        if (echoStreak > 1)
-        {
-            streakBonus += (echoStreak - 1) * 0.2f;
-            bd.globalLogs.Add($"<color=#00FFFF>ECHO STREAK {echoStreak} (+{streakBonus}x)</color>");
-        }
-        else if (chaosStreak > 1)
-        {
-            streakBonus += (chaosStreak - 1) * 0.2f;
-            bd.globalLogs.Add($"<color=#FF5500>CHAOS STREAK {chaosStreak} (+{streakBonus}x)</color>");
-        }
+        if (echoStreak > 1) { streakBonus += (echoStreak - 1) * 0.2f; bd.globalLogs.Add($"<color=#00FFFF>ECHO STREAK {echoStreak} (+{streakBonus}x)</color>"); }
+        else if (chaosStreak > 1) { streakBonus += (chaosStreak - 1) * 0.2f; bd.globalLogs.Add($"<color=#FF5500>CHAOS STREAK {chaosStreak} (+{streakBonus}x)</color>"); }
 
-        if (syntaxStreak > 1)
-        {
-            float posBonus = (syntaxStreak - 1) * 0.2f;
-            streakBonus += posBonus;
-            bd.globalLogs.Add($"<color=#00FF00>SYNTAX STREAK {syntaxStreak} (+{posBonus}x)</color>");
-        }
-        else if (diversityStreak > 1)
-        {
-            float posBonus = (diversityStreak - 1) * 0.2f;
-            streakBonus += posBonus;
-            bd.globalLogs.Add($"<color=#FF00FF>DIVERSITY STREAK {diversityStreak} (+{posBonus}x)</color>");
-        }
+        if (syntaxStreak > 1) { float posBonus = (syntaxStreak - 1) * 0.2f; streakBonus += posBonus; bd.globalLogs.Add($"<color=#00FF00>SYNTAX STREAK {syntaxStreak} (+{posBonus}x)</color>"); }
+        else if (diversityStreak > 1) { float posBonus = (diversityStreak - 1) * 0.2f; streakBonus += posBonus; bd.globalLogs.Add($"<color=#FF00FF>DIVERSITY STREAK {diversityStreak} (+{posBonus}x)</color>"); }
 
-        // Apply the combined streak bonus to the global multiplier!
         bd.globalMult += streakBonus;
 
-        // Save the current word's stats for the NEXT turn
         _lastWordLength = word.Length;
         _lastWordPOS = bd.pos;
 
@@ -429,11 +394,7 @@ public class RunManager : MonoBehaviour
         LexiconSaveManager.Instance.RecordWordPlay(word, bd.totalDamage, out bd.isNewHighScore);
         if (bd.isNewHighScore) bd.globalLogs.Add("<color=#FF00FF>*** NEW RECORD! ***</color>");
 
-        // NEW: Check if this word belongs to any library books!
-        if (ArchiveManager.Instance != null && bd.isNewWord)
-        {
-            ArchiveManager.Instance.OnNewWordDiscovered(word);
-        }
+        if (ArchiveManager.Instance != null && bd.isNewWord) ArchiveManager.Instance.OnNewWordDiscovered(word);
 
         if (bd.totalDamage > highestScore) { highestScore = bd.totalDamage; highestScoringWord = word; }
 
@@ -450,64 +411,76 @@ public class RunManager : MonoBehaviour
 
     public void ResolveSubmission(ScoreBreakdown bd)
     {
-        queriesRemaining--; // Spend the Focus
+        queriesRemaining--;
         totalRunScore += bd.totalDamage;
         currentDamageDealt += bd.totalDamage;
 
-        // Return used dice to the discard pile
         foreach (DieData die in bd.usedDice)
-            DiceDeck.Instance.ReturnToBag(die);
+        {
+            if (!_dicePlayedThisLevel.Contains(die)) _dicePlayedThisLevel.Add(die);
+            DiceDeck.Instance.ReturnToBag(die); // Just throw it in the bag!
+        }
 
-        // CHECK FOR LEVEL UP (Continuous Flow!)
-        if (currentDamageDealt >= targetFirewallHP)
-        {
-            TriggerLevelUp();
-        }
-        else if (queriesRemaining <= 0)
-        {
-            TriggerDefeat();
-        }
-        else
-        {
-            // Keep the turn going
-            UpdateHUD();
-            StartTurn();
-        }
+        UpdateHUD();
+
+        if (currentDamageDealt >= targetFirewallHP) TriggerLevelUp(); // Or TriggerVictory, based on your loop
+        else if (queriesRemaining <= 0) TriggerDefeat();
+        else StartTurn();
     }
 
     private void TriggerLevelUp()
     {
         firewallsBreached++;
         currentLevel++;
-
-        // Calculate overkill damage to carry over into the next firewall!
         double overkill = currentDamageDealt - targetFirewallHP;
-
-        // Grant rewards for beating the level
-        int dustEarned = 100 + (queriesRemaining * 10);
+        
+        int dustEarned = 100 + (queriesRemaining * 10); // Base gold reward
         currentCredits += dustEarned;
 
-        // Optionally grant +1 or +2 Focus (Queries) to keep them alive
-        queriesRemaining += 2;
+        // ==========================================
+        // NEW: QUERY OVERCLOCK MECHANIC
+        // ==========================================
+        int upgradesGranted = 0;
+        string upgradeLogs = "";
 
-        // Generate the Next Level's Firewall Stats
-        GenerateNextFirewall();
-
-        // Apply the overkill damage to the new Firewall
-        currentDamageDealt = overkill;
-
-        // Visual feedback without stopping the game
-        WordUIManager.Instance.ShowTransientMessage($"<size=120%><color=#FFD700>SEAL BREACHED! CHAPTER {currentLevel}</color></size>\n<color=#00FF00>+{dustEarned} Dust | +2 Focus</color>");
-
-        // Check if it's time for the Cycle Shop (Every 5 levels)
-        if (currentLevel % 5 == 1 && currentLevel > 1)
+        for (int i = 0; i < queriesRemaining; i++)
         {
-            // We will wire up the 5-round shop here later!
-            WordUIManager.Instance.ShowTransientMessage("<color=#FF00FF>THE SCRIPTORIUM HAS CYCLED...</color>");
+            if (_dicePlayedThisLevel.Count > 0)
+            {
+                // Pick a random die played this level
+                DieData randomDie = _dicePlayedThisLevel[UnityEngine.Random.Range(0, _dicePlayedThisLevel.Count)];
+                
+                // Pick a random face on that die to permanently upgrade!
+                DieFace randomFace = randomDie.faces[UnityEngine.Random.Range(0, randomDie.faces.Count)];
+                randomFace.bonusScore += 1;
+                
+                upgradesGranted++;
+                upgradeLogs += $"[{randomFace.faceText}] ";
+            }
         }
 
+        // Grant the base survival Focus back
+        queriesRemaining = 2; 
+
+        GenerateNextFirewall();
+        currentDamageDealt = overkill;
+
+        // Display the rewards!
+        string message = $"<size=120%><color=#FFD700>SEAL BREACHED! CHAPTER {currentLevel}</color></size>\n";
+        message += $"<color=#00FF00>+{dustEarned} Dust</color>\n";
+        
+        if (upgradesGranted > 0)
+        {
+            message += $"<color=#00FFFF>OVERCLOCKED {upgradesGranted}x: {upgradeLogs}</color>";
+        }
+
+        WordUIManager.Instance.ShowTransientMessage(message);
+
+        // Reset the tracking list for the next level
+        _dicePlayedThisLevel.Clear();
+
         UpdateHUD();
-        StartTurn(); // Keep drawing and playing!
+        StartTurn(); 
     }
 
     public void GenerateNextFirewall()
